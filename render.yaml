@@ -1,0 +1,20 @@
+services:
+  # Backend FastAPI Service on Render (Free Tier)
+  - type: web
+    name: optimized-chatbot-api
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn src.api.app:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: ENVIRONMENT
+        value: production
+      - key: OPEN_ROUTER_MODEL
+        value: google/gemma-3-27b-it:free
+      - key: OPEN_ROUTER_API
+        sync: false # Set in Render dashboard
+      - key: CACHE_TTL_SECONDS
+        value: 3600
+      - key: SEMANTIC_SIMILARITY_THRESHOLD
+        value: 0.75

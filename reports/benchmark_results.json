@@ -1,0 +1,68 @@
+{
+  "benchmark_metadata": {
+    "sample_size": 100,
+    "target_scale_users": 1000000,
+    "timestamp": 1794590545.9342916
+  },
+  "search_engine_performance": {
+    "total_queries": 100,
+    "total_time_seconds": 0.011,
+    "qps": 9273.13,
+    "latency_p50_ms": 0.047,
+    "latency_p90_ms": 0.063,
+    "latency_p95_ms": 0.52,
+    "latency_p99_ms": 1.643,
+    "latency_mean_ms": 0.107,
+    "latency_min_ms": 0.007,
+    "latency_max_ms": 2.001
+  },
+  "pure_llm_baseline": {
+    "architecture": "Pure LLM (No Caching, No Router)",
+    "total_queries": 100,
+    "total_tokens_consumed": 37643,
+    "total_tokens_saved": 0,
+    "token_reduction_pct": 0.0,
+    "cost_usd": 0.2353,
+    "latency_p50_ms": 20.712,
+    "latency_p90_ms": 22.06,
+    "latency_p95_ms": 23.223,
+    "latency_p99_ms": 27.02,
+    "latency_mean_ms": 21.132
+  },
+  "hybrid_architecture": {
+    "architecture": "Hybrid Multi-Tier (Guardrails + Caching + Typical + LLM)",
+    "total_queries": 100,
+    "tier_breakdown": {
+      "TIER_0_GUARDRAIL_BLOCKED": 3,
+      "TIER_1_EXACT_CACHE": 62,
+      "TIER_2_SEMANTIC_CACHE": 12,
+      "TIER_3_TYPICAL_BOT": 22,
+      "TIER_4_LLM_RAG": 1
+    },
+    "total_tokens_consumed": 392,
+    "total_tokens_saved": 30792,
+    "token_reduction_pct": 98.74,
+    "cost_usd": 0.0024,
+    "cost_saved_usd": 0.1925,
+    "latency_p50_ms": 0.062,
+    "latency_p90_ms": 3.474,
+    "latency_p95_ms": 4.356,
+    "latency_p99_ms": 6.234,
+    "latency_mean_ms": 1.173
+  },
+  "comparative_summary": {
+    "p95_latency_pure_llm_ms": 23.223,
+    "p95_latency_hybrid_ms": 4.356,
+    "p95_speedup_factor": "5.33x faster",
+    "token_reduction_pct": "98.74%",
+    "search_qps": 9273.13
+  },
+  "one_million_user_financial_impact": {
+    "baseline_pure_llm_monthly_cost_usd": 2353.0,
+    "hybrid_architecture_monthly_cost_usd": 24.0,
+    "net_monthly_savings_usd": 2329.0,
+    "net_monthly_savings_inr": 201458.5,
+    "annual_savings_inr": 2417502.0,
+    "monthly_tokens_saved": 307920000
+  }
+}

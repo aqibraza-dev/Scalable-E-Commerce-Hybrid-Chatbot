@@ -1,0 +1,124 @@
+{
+  "dataset_summary": {
+    "total_smartphones": 3260,
+    "total_unique_brands": 32,
+    "total_processors": 15
+  },
+  "price_metrics_inr": {
+    "count": 3260,
+    "min": 2500,
+    "max": 200999,
+    "mean": 20181.38,
+    "std": 24141.68,
+    "p10": 4999.0,
+    "p25": 7490.0,
+    "p50_median": 11999.0,
+    "p75": 21999.0,
+    "p90": 42990.8,
+    "p95": 66049.5,
+    "p99": 135368.41
+  },
+  "price_tier_distribution": {
+    "counts": {
+      "Budget (<15k)": 1982,
+      "Mid-Range (15k-30k)": 771,
+      "Premium (30k-60k)": 320,
+      "Ultra-Flagship (>60k)": 187
+    },
+    "percentages": {
+      "Budget (<15k)": 60.8,
+      "Mid-Range (15k-30k)": 23.65,
+      "Premium (30k-60k)": 9.82,
+      "Ultra-Flagship (>60k)": 5.74
+    },
+    "tier_breakdown": {
+      "Budget (<15k)": {
+        "total_devices": 1982,
+        "pct_5g": 9.64,
+        "avg_ram": 3.37,
+        "avg_battery": 3932.7
+      },
+      "Mid-Range (15k-30k)": {
+        "total_devices": 771,
+        "pct_5g": 58.75,
+        "avg_ram": 7.05,
+        "avg_battery": 4573.6
+      },
+      "Premium (30k-60k)": {
+        "total_devices": 320,
+        "pct_5g": 65.62,
+        "avg_ram": 8.37,
+        "avg_battery": 4536.0
+      },
+      "Ultra-Flagship (>60k)": {
+        "total_devices": 187,
+        "pct_5g": 79.68,
+        "avg_ram": 9.16,
+        "avg_battery": 4281.3
+      }
+    }
+  },
+  "brand_market_share_top10": {
+    "samsung": 9.66,
+    "realme": 9.26,
+    "other": 8.8,
+    "xiaomi": 7.48,
+    "vivo": 7.15,
+    "oppo": 5.34,
+    "apple": 3.68,
+    "tecno": 3.65,
+    "lava": 3.59,
+    "motorola": 3.28
+  },
+  "feature_penetration": {
+    "has_5g_pct": 30.77,
+    "has_fast_charging_pct": 47.33,
+    "has_fingerprints_pct": 73.34,
+    "has_nfc_pct": 25.61
+  },
+  "display_and_screen": {
+    "display_types": {
+      "lcd display": 2010,
+      "amoled display": 882,
+      "tft display": 209,
+      "oled display": 154,
+      "other display": 5
+    },
+    "refresh_rates_hz": {
+      "60.0": 2041,
+      "120.0": 737,
+      "90.0": 427,
+      "144.0": 51,
+      "165.0": 4
+    }
+  },
+  "business_impact_search_insights": {
+    "high_traffic_filter_candidates": [
+      {
+        "filter": "price_range",
+        "traffic_weight": 0.85,
+        "rationale": "85% of e-commerce queries contain price ceilings e.g. under 20k"
+      },
+      {
+        "filter": "has_5g",
+        "traffic_weight": 0.72,
+        "rationale": "Primary modern specification filter"
+      },
+      {
+        "filter": "brand",
+        "traffic_weight": 0.68,
+        "rationale": "High brand affinity (Samsung, Realme, Xiaomi, Vivo, Apple)"
+      },
+      {
+        "filter": "ram",
+        "traffic_weight": 0.54,
+        "rationale": "Common minimum performance threshold (e.g. >=8GB)"
+      }
+    ],
+    "index_recommendations": [
+      "B-Tree index on (brand, price)",
+      "Composite index on (price, ram, has_5g)",
+      "FTS5 virtual table for full-text keyword token search"
+    ]
+  }
+}
