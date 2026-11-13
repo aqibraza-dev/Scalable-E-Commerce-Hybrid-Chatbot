@@ -133,22 +133,87 @@ CONVERSATIONAL_STOPWORDS = {
     "mid",
     "range",
     "midrange",
+    "medium",
     "sabse",
     "sasta",
+    "saste",
     "mahanga",
+    "mahnge",
     "dikhao",
     "batao",
     "chahiye",
     "kaun",
     "sa",
+    "se",
+    "ko",
+    "bhi",
+    "ek",
+    "koi",
     "wala",
     "wali",
+    "wale",
     "kya",
     "hai",
     "aur",
     "hazaar",
     "hazar",
     "thousand",
+    "rupee",
+    "mein",
+    "tak",
+    "andar",
+    "niche",
+    "kam",
+    "jyada",
+    "zyada",
+    "accha",
+    "achha",
+    "acha",
+    "ache",
+    "mast",
+    "badhiya",
+    "shandar",
+    "bhai",
+    "college",
+    "student",
+    "night",
+    "photography",
+    "vlogging",
+    "vlog",
+    "gaming",
+    "game",
+    "gamer",
+    "games",
+    "durable",
+    "smooth",
+    "better",
+    "great",
+    "handset",
+    "cellphone",
+    "am",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "who",
+    "whom",
+    "whose",
+    "love",
+    "loves",
+    "like",
+    "likes",
+    "wants",
+    "needs",
+    "prefer",
+    "prefers",
+    "searching",
 }
 
 
@@ -193,15 +258,18 @@ class SearchEngine:
             "min_price": None,
             "has_5g": None,
             "min_ram": None,
+            "min_storage": None,
             "min_battery": None,
+            "min_camera": None,
             "display_type": None,
             "min_refresh_rate": None,
             "processor_brand": None,
             "sort_by": None,
         }
 
-        # Normalize thousand words
-        q = re.sub(r"\b(thousand|hazaar|hazar)\b", "k", q)
+        # Normalize thousand words & spaces before k (e.g. "10 hazar" -> "10k", "10 thousand" -> "10k", "10 k" -> "10k")
+        q = re.sub(r"(?<=\d)\s*(?:thousand|hazaar|hazar|k)\b", "k", q)
+        q = re.sub(r"\b(?:thousand|hazaar|hazar)\b", "k", q)
 
         # 1. 5G / Network (with negation handling)
         if re.search(r"\b(not\s+5g|non\s+5g|without\s+5g|no\s+5g|4g\s+only|4g)\b", q):
@@ -213,7 +281,7 @@ class SearchEngine:
             slots["has_5g"] = "Yes"
             q = re.sub(r"\b5g\b", " ", q)
 
-        # 2. Price range (between, under, not above, budget of, within, upto)
+        # 2. Price range (between, under, not above, budget of, within, upto, me, tak, ke andar)
         m_bet = re.search(
             r"between\s+(?:rs\.?|inr|₹)?\s*(\d+)(k)?\s+and\s+(?:rs\.?|inr|₹)?\s*(\d+)(k)?",
             q,
@@ -229,8 +297,9 @@ class SearchEngine:
             slots["max_price"] = max(p1, p2)
             q = q[: m_bet.start()] + " " + q[m_bet.end() :]
         else:
+            # Check maximum price patterns (English and Hindi/Hinglish)
             m_max = re.search(
-                r"(?:under|below|not\s+above|not\s+over|not\s+more\s+than|less\s+than|within|upto|up\s+to|<=|<|budget\s+of|in)\s*(?:rs\.?|inr|₹)?\s*(\d+)(k)?(?:\s*(?:rupees|rs|inr|budget))?",
+                r"(?:under|below|not\s+above|not\s+over|not\s+more\s+than|less\s+than|within|upto|up\s+to|<=|<|budget\s+of|ke\s+andar|andar|tak|niche|kam)\s*(?:rs\.?|inr|₹)?\s*(\d+)(k)?(?:\s*(?:rupees|rs|inr|budget|tak|me|mein))?",
                 q,
             )
             if m_max:
@@ -239,17 +308,30 @@ class SearchEngine:
                     v *= 1000
                 slots["max_price"] = v
                 q = q[: m_max.start()] + " " + q[m_max.end() :]
-            else:
-                m_bud = re.search(r"\b(\d+)(k)?\s*(?:rupees|rs|inr)?\s*budget\b", q)
-                if m_bud:
-                    v = int(m_bud.group(1))
-                    if m_bud.group(2) or v < 500:
+
+            if slots["max_price"] is None:
+                # Postfix pattern: "10000 me", "10k me", "10k tak", "10k ke andar", "10000 rupees budget"
+                m_post = re.search(
+                    r"\b(\d+)(k)?\s*(?:me|mein|tak|ke\s+andar|ke\s+niche|se\s+kam|se\s+sasta|budget|rupees|rs|inr)\b",
+                    q,
+                )
+                if m_post:
+                    v = int(m_post.group(1))
+                    if m_post.group(2) or v < 500:
                         v *= 1000
                     slots["max_price"] = v
-                    q = q[: m_bud.start()] + " " + q[m_bud.end() :]
+                    q = q[: m_post.start()] + " " + q[m_post.end() :]
 
+            if slots["max_price"] is None:
+                # Standalone k-notation: e.g. "10k", "20k", "30k" not immediately part of ram or battery
+                m_k = re.search(r"\b(\d{1,3})k\b(?!\s*ram|\s*mah|\s*hz)", q)
+                if m_k:
+                    slots["max_price"] = int(m_k.group(1)) * 1000
+                    q = q[: m_k.start()] + " " + q[m_k.end() :]
+
+            # Check minimum price patterns
             m_min = re.search(
-                r"(?:above|over|not\s+under|not\s+below|not\s+less\s+than|more\s+than|min|minimum|>=|>)\s*(?:rs\.?|inr|₹)?\s*(\d+)(k)?",
+                r"(?:above|over|not\s+under|not\s+below|not\s+less\s+than|more\s+than|min|minimum|>=|>|se\s+jyada|se\s+zyada)\s*(?:rs\.?|inr|₹)?\s*(\d+)(k)?",
                 q,
             )
             if m_min:
@@ -273,15 +355,22 @@ class SearchEngine:
                 q = re.sub(r"\b(flagship|premium|ultra|high\s*end|top\s*end|mahanga)\b", " ", q)
 
         # Feature Preference & Smart Sorting Detection
-        if re.search(r"\b(camera|cameras|photo|photos|photography|selfie|megapixels?|mp)\b", q):
+        if re.search(r"\b(camera|cameras|photo|photos|photography|selfie|megapixels?|mp|video|vlogging|night\s*mode|portrait)\b", q):
             slots["sort_by"] = "camera_desc"
-        elif re.search(r"\b(battery|backup|mah|power)\b", q):
+            if slots.get("min_camera") is None:
+                if slots["max_price"] is not None and slots["max_price"] <= 10000:
+                    slots["min_camera"] = 13.0
+                elif slots["max_price"] is not None and slots["max_price"] <= 25000:
+                    slots["min_camera"] = 48.0
+                else:
+                    slots["min_camera"] = 50.0
+        elif re.search(r"\b(battery|backup|mah|power|long\s*lasting|charge|charging)\b", q):
             slots["sort_by"] = "battery_desc"
-        elif re.search(r"\b(gaming|processor|fastest|speed|performance)\b", q):
+        elif re.search(r"\b(gaming|game|gamer|games|processor|fastest|speed|performance|heavy\s*use)\b", q):
             slots["sort_by"] = "ram_desc"
-        elif re.search(r"\b(cheapest|lowest\s+price|sasta)\b", q):
+        elif re.search(r"\b(cheapest|lowest\s+price|sasta|kam\s*daam|saste)\b", q):
             slots["sort_by"] = "price_asc"
-        elif re.search(r"\b(most\s+expensive|costliest|mahanga)\b", q):
+        elif re.search(r"\b(most\s+expensive|costliest|mahanga|expensive|premium|flagship)\b", q):
             slots["sort_by"] = "price_desc"
 
         # 3. Brand extraction
@@ -372,6 +461,10 @@ class SearchEngine:
                 min_ram = extracted_slots["min_ram"]
             if min_battery is None:
                 min_battery = extracted_slots["min_battery"]
+            if min_camera is None:
+                min_camera = extracted_slots.get("min_camera")
+            if min_storage is None:
+                min_storage = extracted_slots.get("min_storage")
             if display_type is None:
                 display_type = extracted_slots["display_type"]
             if min_refresh_rate is None:
@@ -474,6 +567,30 @@ class SearchEngine:
         cursor.execute(count_sql, params)
         total_count = cursor.fetchone()[0]
 
+        # Query Relaxation: if FTS residual keywords returned 0 results, but structured filters were present
+        if total_count == 0 and residual_tokens and len(where_clauses) > 1:
+            where_clauses_relaxed = [c for c in where_clauses if "smartphones_fts" not in c]
+            params_relaxed = [p for p in params if p != fts_query]
+            where_sql_relaxed = ("WHERE " + " AND ".join(where_clauses_relaxed)) if where_clauses_relaxed else ""
+            cursor.execute(f"SELECT count(*) FROM smartphones s {where_sql_relaxed}", params_relaxed)
+            relaxed_count = cursor.fetchone()[0]
+            if relaxed_count > 0:
+                total_count = relaxed_count
+                where_sql = where_sql_relaxed
+                params = params_relaxed
+
+        # If min_camera was auto-inferred and returned 0 products, relax min_camera
+        if total_count == 0 and min_camera is not None and "s.primary_rear_camera >= ?" in where_clauses:
+            where_clauses_no_cam = [c for c in where_clauses if "s.primary_rear_camera" not in c]
+            params_no_cam = [p for p, c in zip(params, where_clauses) if "s.primary_rear_camera" not in c]
+            where_sql_no_cam = ("WHERE " + " AND ".join(where_clauses_no_cam)) if where_clauses_no_cam else ""
+            cursor.execute(f"SELECT count(*) FROM smartphones s {where_sql_no_cam}", params_no_cam)
+            no_cam_count = cursor.fetchone()[0]
+            if no_cam_count > 0:
+                total_count = no_cam_count
+                where_sql = where_sql_no_cam
+                params = params_no_cam
+
         # Sorting
         sort_sql_map = {
             "price_asc": "s.price ASC",
@@ -481,9 +598,13 @@ class SearchEngine:
             "battery_desc": "s.battery_cap DESC, s.price DESC",
             "ram_desc": "s.ram DESC, s.price DESC",
             "camera_desc": "s.primary_rear_camera DESC, s.price DESC",
-            "relevance": "s.price ASC" if not residual_tokens else "s.id ASC",
+            "relevance": (
+                "(s.ram >= 4) DESC, s.price DESC, s.primary_rear_camera DESC"
+                if max_price is not None
+                else ("s.price DESC" if not residual_tokens else "s.id ASC")
+            ),
         }
-        order_by = sort_sql_map.get(sort_by, "s.price ASC")
+        order_by = sort_sql_map.get(sort_by, "s.price DESC")
 
         # Query products
         select_sql = f"""

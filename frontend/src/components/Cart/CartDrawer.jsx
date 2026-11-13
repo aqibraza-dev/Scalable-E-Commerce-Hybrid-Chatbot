@@ -155,10 +155,10 @@ export default function CartDrawer() {
                   className="p-3.5 rounded-2xl bg-white border border-neutral-200 flex gap-4 items-center shadow-xs"
                 >
                   {/* Phone Procedural Thumbnail */}
-                  <div className="w-16 h-20 bg-neutral-50 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 border border-neutral-200">
+                  <div className="w-14 h-20 bg-neutral-50 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 border border-neutral-200 p-1">
                     <PhoneRenderer
                       phone={item}
-                      size="sm"
+                      size="xs"
                       view="back"
                       interactive={false}
                     />

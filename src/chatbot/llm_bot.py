@@ -41,10 +41,65 @@ class LLMChatbot:
 
     def _build_rag_context(self, query: str) -> list[dict[str, Any]]:
         """Retrieves top 3 relevant phones from catalog to ground the LLM."""
-        res = self.search_engine.search(query=query, limit=3)
+        q_lower = query.lower()
+        shopping_triggers = [
+            "phone", "phones", "mobile", "mobiles", "smartphone", "smartphones",
+            "device", "devices", "recommend", "suggest", "buy", "camera", "battery",
+            "gaming", "ram", "5g", "under", "budget", "specs", "display", "best", "which"
+        ]
+        known_brands = [
+            "samsung", "apple", "xiaomi", "realme", "oneplus", "vivo", "oppo",
+            "motorola", "google", "nothing", "poco", "iqoo", "infinix", "tecno", "lava"
+        ]
+        has_shopping_intent = any(w in q_lower for w in shopping_triggers) or any(
+            b in q_lower for b in known_brands
+        )
+        if not has_shopping_intent:
+            return []
+
+        # Extract structured parameters (budget, camera, 5G, RAM, battery)
+        slots, _ = self.search_engine.parse_query_slots(query)
+        min_p = slots.get("min_price")
+        max_p = slots.get("max_price")
+        if max_p and not min_p and max_p > 15000:
+            min_p = max(0, max_p - 15000)
+
+        sort_mode = slots.get("sort_by")
+        if not sort_mode:
+            if any(w in q_lower for w in ["camera", "photo", "vlog", "vlogging", "selfie", "portrait"]):
+                sort_mode = "camera_desc"
+            elif any(w in q_lower for w in ["battery", "backup", "durable", "construction", "outdoor", "lasting"]):
+                sort_mode = "battery_desc"
+            elif any(w in q_lower for w in ["gaming", "game", "performance", "speed", "fastest", "heavy"]):
+                sort_mode = "ram_desc"
+            else:
+                sort_mode = "relevance"
+
+        # Baseline modern RAM filter for advisory & gift recommendations
+        ram_filter = slots.get("min_ram")
+        if ram_filter is None and (max_p is None or max_p >= 10000):
+            ram_filter = 4.0
+
+        res = self.search_engine.search(
+            brand=slots.get("brand"),
+            min_price=min_p,
+            max_price=max_p,
+            min_ram=ram_filter,
+            min_battery=slots.get("min_battery"),
+            min_camera=slots.get("min_camera"),
+            has_5g=slots.get("has_5g"),
+            sort_by=sort_mode,
+            limit=3,
+        )
         if not res["products"]:
-            # Fallback to balanced popular 5G phones so LLM is grounded with real catalog items
-            res = self.search_engine.search(min_ram=6.0, has_5g="Yes", limit=3)
+            # Fallback relaxing RAM constraints while preserving price and sort
+            res = self.search_engine.search(
+                brand=slots.get("brand"),
+                min_price=min_p,
+                max_price=max_p,
+                sort_by=sort_mode,
+                limit=3,
+            )
         return res["products"]
 
     def _estimate_tokens(self, text: str) -> int:
@@ -55,6 +110,9 @@ class LLMChatbot:
         """Removes internal thought/reasoning tags to ensure clean consumer-facing copy."""
         cleaned = re.sub(r"(?s)<thought>.*?</thought>", "", text)
         cleaned = re.sub(r"(?s)<reasoning>.*?</reasoning>", "", cleaned)
+        cleaned = re.sub(r"(?s)^Thinking Process:.*?\n\n", "", cleaned)
+        cleaned = re.sub(r"(?s)^Thought:.*?\n\n", "", cleaned)
+        cleaned = re.sub(r"(?s)^We need to answer.*?\.\s*", "", cleaned)
         return cleaned.strip()
 
     async def _generate_virtual_response(
@@ -76,6 +134,12 @@ class LLMChatbot:
                 f"{int(p['ram'])}GB RAM, and a long-lasting {p['battery_cap']}mAh battery with {p['has_fast_charging']} fast charging. "
                 f"For your search '{query}', it delivers exceptional value and performance."
             )
+            if len(context_products) > 1:
+                alt = context_products[1]
+                simulated_text += (
+                    f"\n\nAnother top recommendation is the **{alt['name'].title()}** at **₹{alt['price']:,}** "
+                    f"({int(alt['ram'])}GB RAM, {int(alt['primary_rear_camera'])}MP camera, {alt['battery_cap']}mAh battery)."
+                )
         else:
             simulated_text = (
                 f"Thank you for asking about '{query}'. Our smartphone catalog features over 3,200 devices. "
@@ -133,9 +197,11 @@ class LLMChatbot:
         catalog_str = "\n".join(catalog_lines) if catalog_lines else "No specific catalog match."
 
         system_prompt = (
-            "You are a helpful, concise e-commerce smartphone sales advisor. "
-            "Recommend the best option based ONLY on the provided catalog data. "
-            "Keep answers under 3-4 sentences. Mention exact prices in INR (₹) and key specifications.\n\n"
+            "You are Shopcart AI, an expert e-commerce smartphone shopping advisor for Shopcart. "
+            "Help the customer choose the best smartphone based on the provided catalog data. "
+            "Keep answers concise (under 3-4 sentences). Mention exact model names, prices in INR (₹), and key specifications (Camera MP, RAM, Battery). "
+            "Respond directly to the customer in a warm, professional manner. "
+            "Do NOT include internal reasoning, meta-analysis, or thought steps in your final response.\n\n"
             f"Catalog Context:\n{catalog_str}"
         )
 

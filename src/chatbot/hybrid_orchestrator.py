@@ -346,65 +346,67 @@ class HybridChatbotOrchestrator:
         # ==========================================
         intent = self.typical_bot.classify_intent(sanitized_query)
 
-        # Check if query can be answered deterministically with 0 tokens
-        is_deterministic = intent in [
-            "GREETING",
-            "PERSONA_FAQ",
-            "OUT_OF_DOMAIN",
-            "EXTREMES_COMPARISON",
-            "POLICY_RETURN",
-            "POLICY_WARRANTY",
-            "POLICY_SHIPPING",
-            "POLICY_EMI",
-            "COMPARISON",
-            "SPEC_INQUIRY",
-        ]
-
-        # Also check if it's a specific structured product query with explicit slots
-        slots = self.typical_bot.extract_slots(sanitized_query)
-        has_concrete_filters = any(
-            [
-                slots["brand"],
-                slots["max_price"],
-                slots["min_price"],
-                slots["min_ram"],
-                slots["has_5g"],
-                slots.get("sort_by"),
+        # Subjective & Lifestyle Advisory queries bypass Tier 3 and route directly to Tier 4 LLM RAG
+        if intent != "SUBJECTIVE_ADVISORY":
+            # Check if query can be answered deterministically with 0 tokens
+            is_deterministic = intent in [
+                "GREETING",
+                "SMALL_TALK",
+                "PERSONA_FAQ",
+                "OUT_OF_DOMAIN",
+                "EXTREMES_COMPARISON",
+                "POLICY_RETURN",
+                "POLICY_WARRANTY",
+                "POLICY_SHIPPING",
+                "POLICY_EMI",
+                "COMPARISON",
+                "SPEC_INQUIRY",
             ]
-        )
 
-        # If it's a deterministic search or known intent, use Typical Bot
-        if is_deterministic or has_concrete_filters:
-            typ_res = self.typical_bot.process(sanitized_query)
-            # Store in cache for future duplicate/semantic requests
-            self.semantic_cache.store(
-                sanitized_query,
-                typ_res["response"],
-                prompt_tokens=220,
-                completion_tokens=100,
-                products=typ_res.get("products", []),
+            # Also check if it's a specific structured product query with explicit slots
+            slots = self.typical_bot.extract_slots(sanitized_query)
+            has_concrete_filters = any(
+                [
+                    slots["brand"],
+                    slots["max_price"],
+                    slots["min_price"],
+                    slots["min_ram"],
+                    slots["has_5g"],
+                ]
             )
-            elapsed_ms = round((time.perf_counter() - start_time) * 1000, 3)
 
-            with self._stats_lock:
-                self.stats["total_queries"] += 1
-                self.stats["typical_bot_routed"] += 1
-                self.stats["tokens_saved"] += 320
-                self.stats["total_latency_ms"] += elapsed_ms
+            # If it's a deterministic search or known intent, use Typical Bot
+            if is_deterministic or has_concrete_filters:
+                typ_res = self.typical_bot.process(sanitized_query)
+                # Store in cache for future duplicate/semantic requests
+                self.semantic_cache.store(
+                    sanitized_query,
+                    typ_res["response"],
+                    prompt_tokens=220,
+                    completion_tokens=100,
+                    products=typ_res.get("products", []),
+                )
+                elapsed_ms = round((time.perf_counter() - start_time) * 1000, 3)
 
-            return {
-                "query": query,
-                "response": typ_res["response"],
-                "routing_tier": "TIER_3_TYPICAL_BOT",
-                "tokens_used": 0,
-                "tokens_saved": 320,
-                "cache_hit": False,
-                "similarity_score": 0.0,
-                "execution_time_ms": elapsed_ms,
-                "pii_redacted": guard_result["pii_detected"],
-                "redactions": guard_result["redactions"],
-                "products": typ_res.get("products", []),
-            }
+                with self._stats_lock:
+                    self.stats["total_queries"] += 1
+                    self.stats["typical_bot_routed"] += 1
+                    self.stats["tokens_saved"] += 320
+                    self.stats["total_latency_ms"] += elapsed_ms
+
+                return {
+                    "query": query,
+                    "response": typ_res["response"],
+                    "routing_tier": "TIER_3_TYPICAL_BOT",
+                    "tokens_used": 0,
+                    "tokens_saved": 320,
+                    "cache_hit": False,
+                    "similarity_score": 0.0,
+                    "execution_time_ms": elapsed_ms,
+                    "pii_redacted": guard_result["pii_detected"],
+                    "redactions": guard_result["redactions"],
+                    "products": typ_res.get("products", []),
+                }
 
         # ==========================================
         # Tier 4: LLM-Augmented Advisory Engine

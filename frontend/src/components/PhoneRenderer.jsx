@@ -64,6 +64,36 @@ const BRAND_COLOR_PALETTES = {
     { name: 'Midnight Blue', back: ['#1E293B', '#0F172A'], frame: '#334155', lens: '#64748B', text: '#F8FAFC' },
     { name: 'Viva Magenta', back: ['#BE185D', '#831843'], frame: '#F472B6', lens: '#FBCFE8', text: '#FFF1F2' },
   ],
+  oppo: [
+    { name: 'Sunset Gold', back: ['#E4B877', '#C4944D'], frame: '#F1D5A6', lens: '#FDEFD6', text: '#3E2502' },
+    { name: 'Silk White', back: ['#F6F6F6', '#E2E2E6'], frame: '#ECECEF', lens: '#FFFFFF', text: '#1E293B' },
+    { name: 'Stellar Black', back: ['#1A1C20', '#0E0F12'], frame: '#2E323A', lens: '#4A4F5B', text: '#F8FAFC' },
+    { name: 'Wave Green', back: ['#14532D', '#0A2E19'], frame: '#22C55E', lens: '#86EFAC', text: '#ECFDF5' },
+  ],
+  iqoo: [
+    { name: 'Legend White (BMW M)', back: ['#F9FAFB', '#E5E7EB'], frame: '#D1D5DB', lens: '#EF4444', text: '#111827' },
+    { name: 'Alpha Black', back: ['#18181B', '#09090B'], frame: '#27272A', lens: '#3B82F6', text: '#FAFAFA' },
+    { name: 'Flame Orange', back: ['#EA580C', '#9A3412'], frame: '#F97316', lens: '#FDBA74', text: '#FFF7ED' },
+  ],
+  poco: [
+    { name: 'Poco Yellow', back: ['#EAB308', '#CA8A04'], frame: '#FDE047', lens: '#18181B', text: '#000000' },
+    { name: 'Power Black', back: ['#18181B', '#09090B'], frame: '#EAB308', lens: '#EAB308', text: '#FDE047' },
+    { name: 'Cool Blue', back: ['#0284C7', '#0369A1'], frame: '#38BDF8', lens: '#7DD3FC', text: '#F0F9FF' },
+  ],
+  infinix: [
+    { name: 'Cyber Mecha Silver', back: ['#94A3B8', '#64748B'], frame: '#CBD5E1', lens: '#06B6D4', text: '#0F172A' },
+    { name: 'Mecha Orange', back: ['#F97316', '#C2410C'], frame: '#FDBA74', lens: '#FED7AA', text: '#431407' },
+    { name: 'Dark Nebula', back: ['#1E1B4B', '#0F0E2A'], frame: '#4338CA', lens: '#818CF8', text: '#EEF2FF' },
+  ],
+  sony: [
+    { name: 'Xperia Frosted Black', back: ['#1C1917', '#0C0A09'], frame: '#292524', lens: '#DC2626', text: '#FAFAF9' },
+    { name: 'Khaki Green', back: ['#3F4E3A', '#242D21'], frame: '#596E52', lens: '#8DA883', text: '#F2F7F0' },
+    { name: 'Platinum Silver', back: ['#D6D3D1', '#A8A29E'], frame: '#E7E5E4', lens: '#F5F5F4', text: '#1C1917' },
+  ],
+  asus: [
+    { name: 'ROG Phantom Black', back: ['#18181B', '#09090B'], frame: '#EF4444', lens: '#EF4444', text: '#FCA5A5' },
+    { name: 'Storm White', back: ['#F8FAFC', '#E2E8F0'], frame: '#38BDF8', lens: '#38BDF8', text: '#0F172A' },
+  ],
   default: [
     { name: 'Graphite Slate', back: ['#334155', '#1E293B'], frame: '#475569', lens: '#94A3B8', text: '#F8FAFC' },
     { name: 'Forest Emerald', back: ['#065F46', '#022C22'], frame: '#059669', lens: '#34D399', text: '#ECFDF5' },
@@ -83,9 +113,14 @@ const BRAND_CAMERA_STYLES = {
   realme: 'realme_dial',
   nothing: 'nothing_glyph',
   motorola: 'moto_matrix',
-  poco: 'xiaomi_matrix',
-  iqoo: 'vivo_halo',
+  poco: 'poco_matrix',
+  iqoo: 'iqoo_matrix',
+  infinix: 'infinix_mecha',
+  asus: 'rog_gamer',
+  sony: 'sony_tall',
   honor: 'oneplus_dial',
+  tecno: 'oppo_matrix',
+  lava: 'samsung_vertical',
   default: 'samsung_vertical'
 };
 
@@ -120,8 +155,10 @@ export default function PhoneRenderer({
   // Responsive sizing dimensions
   const dimensions = useMemo(() => {
     switch (size) {
+      case 'xs':
+        return { width: 50, height: 90, rx: 10, stroke: 1.2, scale: 0.35 };
       case 'sm':
-        return { width: 90, height: 160, rx: 18, stroke: 1.5, scale: 0.5 };
+        return { width: 84, height: 150, rx: 16, stroke: 1.5, scale: 0.55 };
       case 'lg':
         return { width: 220, height: 390, rx: 34, stroke: 3, scale: 1.2 };
       case 'md':
@@ -366,7 +403,101 @@ export default function PhoneRenderer({
                 </g>
               )}
 
-              {/* ---------------- 6. SAMSUNG / UNIVERSAL FLOATING RINGS ---------------- */}
+              {/* ---------------- 6. POCO HORIZONTAL ACCENT BLOCK ---------------- */}
+              {cameraStyle === 'poco_matrix' && (
+                <g>
+                  <rect
+                    x="2"
+                    y={height * 0.08}
+                    width={width - 4}
+                    height={height * 0.24}
+                    rx="6"
+                    fill="#18181B"
+                    stroke="#EAB308"
+                    strokeWidth="1.2"
+                  />
+                  <text x={width * 0.76} y={height * 0.20} textAnchor="middle" fill="#EAB308" fontSize="8" fontWeight="900" letterSpacing="0.8px">
+                    POCO
+                  </text>
+                  <circle cx={width * 0.22} cy={height * 0.15} r={width * 0.08} fill={`url(#${idPrefix}-lens-glare)`} stroke="#EAB308" strokeWidth="1.5" />
+                  <circle cx={width * 0.22} cy={height * 0.25} r={width * 0.07} fill={`url(#${idPrefix}-lens-glare)`} stroke="#EAB308" strokeWidth="1.5" />
+                  <circle cx={width * 0.44} cy={height * 0.20} r={width * 0.035} fill="#FEF08A" />
+                </g>
+              )}
+
+              {/* ---------------- 7. IQOO BMW M RACING TRACK ---------------- */}
+              {cameraStyle === 'iqoo_matrix' && (
+                <g>
+                  <rect
+                    x={width * 0.1}
+                    y={height * 0.08}
+                    width={width * 0.5}
+                    height={height * 0.26}
+                    rx="12"
+                    fill="#111827"
+                    stroke="#374151"
+                    strokeWidth="1.5"
+                  />
+                  <line x1={width * 0.72} y1="2" x2={width * 0.72} y2={height - 2} stroke="#0284C7" strokeWidth="2.5" />
+                  <line x1={width * 0.76} y1="2" x2={width * 0.76} y2={height - 2} stroke="#1E3A8A" strokeWidth="2.5" />
+                  <line x1={width * 0.80} y1="2" x2={width * 0.80} y2={height - 2} stroke="#EF4444" strokeWidth="2.5" />
+                  <circle cx={width * 0.35} cy={height * 0.15} r={width * 0.085} fill={`url(#${idPrefix}-lens-glare)`} stroke="#60A5FA" strokeWidth="1.5" />
+                  <circle cx={width * 0.35} cy={height * 0.25} r={width * 0.08} fill={`url(#${idPrefix}-lens-glare)`} stroke="#9CA3AF" strokeWidth="1" />
+                </g>
+              )}
+
+              {/* ---------------- 8. INFINIX CYBER MECHA ---------------- */}
+              {cameraStyle === 'infinix_mecha' && (
+                <g>
+                  <polygon
+                    points={`${width * 0.1},${height * 0.08} ${width * 0.88},${height * 0.08} ${width * 0.75},${height * 0.34} ${width * 0.1},${height * 0.34}`}
+                    fill="#0F172A"
+                    stroke="#06B6D4"
+                    strokeWidth="1.5"
+                  />
+                  <line x1={width * 0.2} y1={height * 0.38} x2={width * 0.8} y2={height * 0.52} stroke="#06B6D4" strokeWidth="1" strokeDasharray="3,3" opacity="0.6" />
+                  <circle cx={width * 0.35} cy={height * 0.16} r={width * 0.09} fill={`url(#${idPrefix}-lens-glare)`} stroke="#22D3EE" strokeWidth="1.5" />
+                  <circle cx={width * 0.35} cy={height * 0.27} r={width * 0.075} fill={`url(#${idPrefix}-lens-glare)`} stroke="#22D3EE" strokeWidth="1.5" />
+                  <circle cx={width * 0.62} cy={height * 0.21} r={width * 0.04} fill="#FEF08A" />
+                </g>
+              )}
+
+              {/* ---------------- 9. SONY XPERIA ZEISS T* ---------------- */}
+              {cameraStyle === 'sony_tall' && (
+                <g>
+                  <rect
+                    x={width * 0.12}
+                    y={height * 0.08}
+                    width={width * 0.25}
+                    height={height * 0.28}
+                    rx="14"
+                    fill="#0C0A09"
+                    stroke="#44403C"
+                    strokeWidth="1.5"
+                  />
+                  <text x={width * 0.245} y={height * 0.115} textAnchor="middle" fill="#DC2626" fontSize="5" fontWeight="bold">T*</text>
+                  <circle cx={width * 0.245} cy={height * 0.155} r={width * 0.07} fill={`url(#${idPrefix}-lens-glare)`} stroke="#78716C" strokeWidth="1" />
+                  <circle cx={width * 0.245} cy={height * 0.225} r={width * 0.07} fill={`url(#${idPrefix}-lens-glare)`} stroke="#78716C" strokeWidth="1" />
+                  <circle cx={width * 0.245} cy={height * 0.295} r={width * 0.07} fill={`url(#${idPrefix}-lens-glare)`} stroke="#78716C" strokeWidth="1" />
+                </g>
+              )}
+
+              {/* ---------------- 10. ASUS ROG GAMER MATRIX ---------------- */}
+              {cameraStyle === 'rog_gamer' && (
+                <g>
+                  <polygon
+                    points={`${width * 0.1},${height * 0.1} ${width * 0.8},${height * 0.1} ${width * 0.65},${height * 0.28} ${width * 0.1},${height * 0.28}`}
+                    fill="#18181B"
+                    stroke="#EF4444"
+                    strokeWidth="1.5"
+                  />
+                  <line x1={width * 0.25} y1={height * 0.4} x2={width * 0.85} y2={height * 0.65} stroke="#EF4444" strokeWidth="1.5" opacity="0.8" />
+                  <circle cx={width * 0.3} cy={height * 0.18} r={width * 0.085} fill={`url(#${idPrefix}-lens-glare)`} stroke="#EF4444" strokeWidth="1.5" />
+                  <circle cx={width * 0.52} cy={height * 0.18} r={width * 0.07} fill={`url(#${idPrefix}-lens-glare)`} stroke="#F87171" strokeWidth="1" />
+                </g>
+              )}
+
+              {/* ---------------- 11. SAMSUNG / UNIVERSAL FLOATING RINGS ---------------- */}
               {(cameraStyle === 'samsung_vertical' || cameraStyle === 'xiaomi_matrix' || cameraStyle === 'oppo_matrix' || cameraStyle === 'moto_matrix') && (
                 <g>
                   {/* Lens 1: Primary Sensor */}

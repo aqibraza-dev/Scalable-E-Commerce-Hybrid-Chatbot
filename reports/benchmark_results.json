@@ -2,67 +2,67 @@
   "benchmark_metadata": {
     "sample_size": 100,
     "target_scale_users": 1000000,
-    "timestamp": 1794590545.9342916
+    "timestamp": 1794594230.9947467
   },
   "search_engine_performance": {
     "total_queries": 100,
-    "total_time_seconds": 0.011,
-    "qps": 9273.13,
-    "latency_p50_ms": 0.047,
-    "latency_p90_ms": 0.063,
-    "latency_p95_ms": 0.52,
-    "latency_p99_ms": 1.643,
-    "latency_mean_ms": 0.107,
+    "total_time_seconds": 0.014,
+    "qps": 7217.54,
+    "latency_p50_ms": 0.039,
+    "latency_p90_ms": 0.072,
+    "latency_p95_ms": 0.687,
+    "latency_p99_ms": 2.183,
+    "latency_mean_ms": 0.138,
     "latency_min_ms": 0.007,
-    "latency_max_ms": 2.001
+    "latency_max_ms": 3.131
   },
   "pure_llm_baseline": {
     "architecture": "Pure LLM (No Caching, No Router)",
     "total_queries": 100,
-    "total_tokens_consumed": 37643,
+    "total_tokens_consumed": 38766,
     "total_tokens_saved": 0,
     "token_reduction_pct": 0.0,
-    "cost_usd": 0.2353,
-    "latency_p50_ms": 20.712,
-    "latency_p90_ms": 22.06,
-    "latency_p95_ms": 23.223,
-    "latency_p99_ms": 27.02,
-    "latency_mean_ms": 21.132
+    "cost_usd": 0.2423,
+    "latency_p50_ms": 20.528,
+    "latency_p90_ms": 21.757,
+    "latency_p95_ms": 22.951,
+    "latency_p99_ms": 24.068,
+    "latency_mean_ms": 20.839
   },
   "hybrid_architecture": {
     "architecture": "Hybrid Multi-Tier (Guardrails + Caching + Typical + LLM)",
     "total_queries": 100,
     "tier_breakdown": {
-      "TIER_0_GUARDRAIL_BLOCKED": 3,
-      "TIER_1_EXACT_CACHE": 62,
-      "TIER_2_SEMANTIC_CACHE": 12,
-      "TIER_3_TYPICAL_BOT": 22,
-      "TIER_4_LLM_RAG": 1
+      "TIER_0_GUARDRAIL_BLOCKED": 4,
+      "TIER_1_EXACT_CACHE": 55,
+      "TIER_2_SEMANTIC_CACHE": 20,
+      "TIER_3_TYPICAL_BOT": 13,
+      "TIER_4_LLM_RAG": 8
     },
-    "total_tokens_consumed": 392,
-    "total_tokens_saved": 30792,
-    "token_reduction_pct": 98.74,
-    "cost_usd": 0.0024,
-    "cost_saved_usd": 0.1925,
-    "latency_p50_ms": 0.062,
-    "latency_p90_ms": 3.474,
-    "latency_p95_ms": 4.356,
-    "latency_p99_ms": 6.234,
-    "latency_mean_ms": 1.173
+    "total_tokens_consumed": 3278,
+    "total_tokens_saved": 30151,
+    "token_reduction_pct": 90.19,
+    "cost_usd": 0.0205,
+    "cost_saved_usd": 0.1884,
+    "latency_p50_ms": 0.067,
+    "latency_p90_ms": 4.327,
+    "latency_p95_ms": 25.295,
+    "latency_p99_ms": 26.647,
+    "latency_mean_ms": 2.728
   },
   "comparative_summary": {
-    "p95_latency_pure_llm_ms": 23.223,
-    "p95_latency_hybrid_ms": 4.356,
-    "p95_speedup_factor": "5.33x faster",
-    "token_reduction_pct": "98.74%",
-    "search_qps": 9273.13
+    "p95_latency_pure_llm_ms": 22.951,
+    "p95_latency_hybrid_ms": 25.295,
+    "p95_speedup_factor": "0.91x faster",
+    "token_reduction_pct": "90.19%",
+    "search_qps": 7217.54
   },
   "one_million_user_financial_impact": {
-    "baseline_pure_llm_monthly_cost_usd": 2353.0,
-    "hybrid_architecture_monthly_cost_usd": 24.0,
-    "net_monthly_savings_usd": 2329.0,
-    "net_monthly_savings_inr": 201458.5,
-    "annual_savings_inr": 2417502.0,
-    "monthly_tokens_saved": 307920000
+    "baseline_pure_llm_monthly_cost_usd": 2423.0,
+    "hybrid_architecture_monthly_cost_usd": 205.0,
+    "net_monthly_savings_usd": 2218.0,
+    "net_monthly_savings_inr": 191857.0,
+    "annual_savings_inr": 2302284.0,
+    "monthly_tokens_saved": 301510000
   }
 }

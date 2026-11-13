@@ -58,33 +58,46 @@ class TypicalChatbot:
         # Persona & Bot Identity FAQ
         persona_patterns = [
             r"\bwho\s+are\s+you\b",
-            r"\bwho\s+(?:built|build|created|made|developed)\s+you\b",
+            r"\bwho\s+(?:built|build|created|made|developed|founded)\s+you\b",
             r"\bwhat\s+(?:are\s+you|is\s+your\s+name)\b",
             r"\btell\s+me\s+about\s+yourself\b",
-            r"\bwhat\s+can\s+you\s+do\b",
+            r"\bwhat\s+can\s+you\s+do(?:\s+for\s+me)?\b",
             r"\bwho\s+is\s+your\s+creator\b",
             r"\bwho\s+owns\s+you\b",
+            r"\bare\s+you\s+(?:a\s+bot|an\s+ai|human|real)\b",
+            r"\bwhat\s+is\s+this\s+(?:website|bot|store|shop)\b",
+            r"\bwho\s+made\s+this\b",
         ]
         if any(re.search(p, t) for p in persona_patterns):
             return "PERSONA_FAQ"
 
+        # Small Talk & Polite Chit-Chat
+        small_talk_patterns = [
+            r"\b(how\s+are\s+you|how\s+r\s+u|how\'s\s+it\s+going|how\s+do\s+you\s+do|how\s+are\s+things)\b",
+            r"\b(thank\s+you|thanks|thx|thank\s+u|dhanyawad|shukriya|thanks\s+a\s+lot|thank\s+you\s+so\s+much)\b",
+            r"\b(good\s+(?:morning|afternoon|evening|night))\b",
+            r"\b(bye|goodbye|see\s+you|take\s+care|have\s+a\s+nice\s+day)\b",
+            r"\b(nice\s+to\s+meet\s+you|pleased\s+to\s+meet\s+you)\b",
+        ]
+        if any(re.search(p, t) for p in small_talk_patterns):
+            return "SMALL_TALK"
+
         # General Trivia / Out-of-Domain questions
         out_of_domain_patterns = [
-            r"\bcapital\s+of\b",
-            r"\bpresident\s+of\b",
-            r"\bprime\s+minister\b",
-            r"\bpoem\s+about\b",
-            r"\bwrite\s+(?:python|code|script|essay|story)\b",
-            r"\bsolve\s+(?:math|equation)\b",
-            r"\bweather\s+in\b",
-            r"\bwho\s+won\s+the\s+world\s+cup\b",
+            r"\b(joke|jokes|make\s+me\s+laugh|tell\s+me\s+something\s+funny)\b",
+            r"\b(weather|forecast|temperature|rain|humidity)\b",
+            r"\b(capital\s+of|president\s+of|prime\s+minister|population\s+of|who\s+won)\b",
+            r"\b(poem|poetry|song|sing|dance|story|essay)\b",
+            r"\b(write\s+(?:python|code|script|essay|story|program)|solve\s+(?:math|equation))\b",
+            r"\b(calculate\s+\d|\d+\s*[\+\-\*\/]\s*\d+)\b",
+            r"\b(recipe|cooking|movie|celebrity|news\s+today|horoscope)\b",
         ]
         if any(re.search(p, t) for p in out_of_domain_patterns):
             return "OUT_OF_DOMAIN"
 
         # Hinglish / English Dual Extremes ("sabse sasta aur mahanga")
         if re.search(
-            r"\b(?:sabse\s+)?sasta\s+aur\s+(?:sabse\s+)?mahanga\b|\bcheapest\s+and\s+most\s+expensive\b|\bsasta\s+aur\s+mahanga\b",
+            r"(?:sabse\s+)?sasta.*(?:aur|and).*(?:sabse\s+)?mahanga|(?:cheapest|lowest\s+price|most\s+affordable).*(?:and|aur).*(?:most\s+expensive|costliest|flagship|highest\s+price)|(?:most\s+expensive|costliest|highest\s+price).*(?:and|aur).*(?:cheapest|lowest\s+price|sasta)|(?:sabse\s+)?mahanga.*(?:aur|and).*(?:sabse\s+)?sasta",
             t,
         ):
             return "EXTREMES_COMPARISON"
@@ -112,6 +125,21 @@ class TypicalChatbot:
             or (("chart" in t or "charts" in t) and (" and " in t or " vs " in t))
         ):
             return "COMPARISON"
+
+        # Subjective & Lifestyle Advisory intent (requires Tier 4 LLM RAG)
+        advisory_patterns = [
+            r"\b(student|college|university)\b.*\b(phone|smartphone|recommend|suggest|need|looking)\b",
+            r"\b(phone|smartphone|recommend|suggest|need|looking)\b.*\b(student|college|university)\b",
+            r"\b(construction|outdoor|rugged|durable|tough)\b.*\b(phone|smartphone|device|work)\b",
+            r"\b(mother|father|mom|dad|parents|elderly|grandfather|grandmother|kid|child|wife|husband|friend)\b.*\b(phone|gift|recommend|suggest)\b",
+            r"\b(gift|present)\b.*\b(?:for\s+)?(?:my\s+)?(?:mother|father|mom|dad|parents|friend|brother|sister|wife|husband|kid|someone)\b",
+            r"\b(cleanest\s+(?:software|ui)|clean\s+ui|stock\s+android|simple\s+interface|easy\s+to\s+use)\b",
+            r"\b(night\s+photography|vlog|vlogging|content\s+creation)\b.*\b(phone|recommend|suggest)\b",
+            r"\b(recommend\s+a\s+phone\s+for|suggest\s+a\s+(?:gift\s+)?phone\s+for|help\s+me\s+choose\s+a\s+phone|which\s+phone\s+should\s+i\s+buy\s+for)\b",
+            r"\bwhich\s+phone\s+(?:has\s+the\s+best|has\s+the\s+cleanest|is\s+best\s+for)\b",
+        ]
+        if any(re.search(p, t) for p in advisory_patterns):
+            return "SUBJECTIVE_ADVISORY"
 
         # Check if query is a catalog search query
         is_search_intent = any(
@@ -206,6 +234,24 @@ class TypicalChatbot:
                 "- 📦 **Policies & FAQs**: Answer queries about warranties, 7-day returns, and EMI options."
             )
 
+        elif intent == "SMALL_TALK":
+            q_lower = query.lower()
+            if any(w in q_lower for w in ["thank", "thx", "shukriya", "dhanyawad"]):
+                response_text = (
+                    "You're very welcome! 😊 Feel free to ask if you want to explore more smartphones, "
+                    "compare specs, or add recommendations to your shopping cart. Happy shopping on Shopcart! 🛍️"
+                )
+            elif any(w in q_lower for w in ["bye", "goodbye", "see you", "night"]):
+                response_text = (
+                    "Goodbye! 👋 Have a wonderful day, and come back whenever you need smartphone recommendations or deals on Shopcart!"
+                )
+            else:
+                response_text = (
+                    "I'm doing great, thank you for asking! 😊 I'm ready to help you explore our 1,376+ smartphones, "
+                    "compare hardware specs, find top camera or gaming phones, or answer policy questions.\n\n"
+                    "What kind of phone are you looking for today?"
+                )
+
         elif intent == "OUT_OF_DOMAIN":
             response_text = (
                 "I am specialized as a smartphone shopping assistant for Shopcart. "
@@ -230,6 +276,35 @@ class TypicalChatbot:
                 )
             else:
                 response_text = "Catalog currently does not contain matching smartphones."
+
+        elif intent == "SUBJECTIVE_ADVISORY":
+            slots = self.extract_slots(query)
+            min_p = slots.get("min_price")
+            max_p = slots.get("max_price")
+            res = self.search_engine.search(
+                brand=slots.get("brand"),
+                min_price=min_p,
+                max_price=max_p,
+                min_ram=slots.get("min_ram") or (4.0 if not slots.get("brand") and not max_p else None),
+                min_camera=slots.get("min_camera"),
+                min_battery=slots.get("min_battery"),
+                has_5g=slots.get("has_5g"),
+                sort_by=slots.get("sort_by") or "relevance",
+                limit=4,
+            )
+            products = res["products"]
+            if products:
+                response_text = (
+                    "💡 Based on your requirements, here are our top smartphone recommendations:\n\n"
+                )
+                for idx, p in enumerate(products[:3], 1):
+                    response_text += (
+                        f"**{idx}. {p['name'].title()}** — **₹{p['price']:,}**\n"
+                        f"   - {int(p['ram'])}GB RAM | {p['battery_cap']}mAh | "
+                        f"{int(p['primary_rear_camera'])}MP Camera | 5G: {p['has_5g']}\n"
+                    )
+            else:
+                response_text = "I recommend checking our featured smartphones or refining your budget range."
 
         elif intent == "GREETING":
             response_text = (

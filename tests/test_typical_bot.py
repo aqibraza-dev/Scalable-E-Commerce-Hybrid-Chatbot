@@ -117,3 +117,67 @@ def test_typical_bot_camera_phone_ranking():
     assert first_phone["primary_rear_camera"] >= 50.0
     assert first_phone["price"] <= 10000
 
+
+def test_typical_bot_small_talk():
+    bot = TypicalChatbot()
+    for q in ["how are you", "thank you so much", "good morning", "thanks"]:
+        res = bot.process(q)
+        assert res["intent"] == "SMALL_TALK"
+        assert res["tokens_used"] == 0
+        assert len(res["products"]) == 0
+
+
+def test_typical_bot_out_of_domain_expanded():
+    bot = TypicalChatbot()
+    for q in [
+        "what is the capital of france",
+        "write python script for fibonacci",
+        "tell me a joke",
+        "what is the weather today",
+    ]:
+        res = bot.process(q)
+        assert res["intent"] == "OUT_OF_DOMAIN"
+        assert "specialized" in res["response"]
+        assert len(res["products"]) == 0
+
+
+def test_typical_bot_hinglish_price_queries():
+    bot = TypicalChatbot()
+    for q in [
+        "10000 me best camera phone",
+        "10 hazar me sabse accha camera phone",
+        "10k ke andar best camera phone",
+    ]:
+        res = bot.process(q)
+        assert res["intent"] == "PRODUCT_SEARCH"
+        assert len(res["products"]) > 0
+        first_phone = res["products"][0]
+        assert first_phone["price"] <= 10000
+        assert first_phone["primary_rear_camera"] >= 50.0
+
+
+def test_typical_bot_mid_budget_camera():
+    bot = TypicalChatbot()
+    res = bot.process("best camera phone under mid budget")
+    assert res["intent"] == "PRODUCT_SEARCH"
+    assert len(res["products"]) > 0
+    first_phone = res["products"][0]
+    assert 15000 <= first_phone["price"] <= 35000
+    assert first_phone["primary_rear_camera"] >= 100.0
+
+
+def test_typical_bot_subjective_advisory():
+    bot = TypicalChatbot()
+    queries = [
+        "I am a college student who loves night photography and vlogging, recommend a phone under 35000.",
+        "Need a durable smartphone for outdoor construction work with maximum battery life.",
+        "Which phone has the cleanest software UI and best gaming performance under 40000?",
+        "Suggest a gift phone for my mother who needs simple interface and big screen under 15k.",
+    ]
+    for q in queries:
+        assert bot.classify_intent(q) == "SUBJECTIVE_ADVISORY"
+        res = bot.process(q)
+        assert len(res["products"]) > 0
+
+
+

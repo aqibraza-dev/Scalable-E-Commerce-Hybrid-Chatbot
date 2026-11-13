@@ -552,10 +552,10 @@ export default function ChatWidget({ isOpen, onClose, initialQuery = '' }) {
                               className="p-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 hover:border-emerald-500 transition-colors flex gap-3 items-center group shadow-xs"
                             >
                               {/* Procedural Phone Mini View */}
-                              <div className="w-12 h-16 bg-white rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden border border-neutral-200">
+                              <div className="w-14 h-20 bg-white rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden border border-neutral-200 p-1">
                                 <PhoneRenderer
                                   phone={prod}
-                                  size="sm"
+                                  size="xs"
                                   view="back"
                                   interactive={false}
                                 />
