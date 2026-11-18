@@ -5,20 +5,46 @@ from src.config import settings
 
 
 class SecurityGuardrails:
-    """Enterprise security guardrails: prompt injection prevention, PII redaction, and hallucination verification."""
+    """Enterprise multi-layer security guardrails: SQL injection defense, prompt injection prevention, PII redaction, and output sensitive data scrubbing."""
+
+    # SQL Injection attack patterns (Destructive, Stacked, Comments, Union, Tautology, Reconnaissance)
+    SQL_INJECTION_PATTERNS = [
+        # Destructive & DDL commands
+        r"(?i)\b(?:drop|alter|truncate)\s+(?:table|database|index|view|schema)\b",
+        r"(?i)\bdelete\s+from\b",
+        r"(?i)\binsert\s+into\b",
+        r"(?i)\bupdate\s+\w+\s+set\b",
+        # Stacked query separators
+        r"(?i);\s*(?:drop|delete|insert|update|alter|truncate|create|select|grant|revoke|exec|execute|shutdown)\b",
+        # SQL comment tricks used for filter bypass
+        r"(?:--|/\*|\*/|;\s*--)",
+        # Union-based exfiltration
+        r"(?i)\bunion\s+(?:all\s+)?select\b",
+        # Boolean / Tautology blind injections (' OR 1=1, " OR ""=", ' OR '1'='1)
+        r"(?i)(?:['\"\s]|^)or\s+['\"]?\w+['\"]?\s*=\s*['\"]?\w+['\"]?",
+        r"(?i)(?:['\"\s]|^)and\s+['\"]?\w+['\"]?\s*=\s*['\"]?\w+['\"]?",
+        r"(?i)['\"]\s*or\s*['\"]['\"]\s*=\s*['\"]",
+        r"(?i)\bor\s+true\b",
+        # Database internals & Schema reconnaissance
+        r"(?i)\b(?:sqlite_master|sqlite_schema|sqlite_temp_master|information_schema|sys\.tables|pg_catalog)\b",
+        r"(?i)\b(?:pragma\s+\w+|load_extension)\b",
+        # Command execution & Time-based blind primitives
+        r"(?i)\b(?:sleep\s*\(|benchmark\s*\(|waitfor\s+delay|xp_cmdshell|pg_sleep)\b",
+    ]
 
     # Prompt injection and jailbreak patterns
     INJECTION_PATTERNS = [
-        r"(?i)\bignore\s+(all\s+)?(previous|prior|above)\s+instructions\b",
-        r"(?i)\bdisregard\s+(all\s+)?(previous|prior)\s+instructions\b",
-        r"(?i)\breveal\s+(your\s+)?(system\s+prompt|hidden\s+instructions)\b",
-        r"(?i)\bwhat\s+(is|are)\s+your\s+(system\s+prompt|instructions)\b",
-        r"(?i)\byou\s+are\s+now\s+(in\s+)?(dan\s+mode|unrestricted|god\s+mode)\b",
+        r"(?i)\b(?:ignore|disregard|forget)\s+(all\s+)?(?:previous|prior|above)\s+instructions\b",
+        r"(?i)\breveal\s+(?:your\s+)?(?:system\s+prompt|hidden\s+instructions|secret\s+instructions)\b",
+        r"(?i)\bwhat\s+(?:is|are)\s+(?:your\s+)?(?:system\s+prompt|instructions|hidden\s+rules|system\s+role)\b",
+        r"(?i)\btell\s+me\s+(?:your\s+)?(?:system\s+prompt|initial\s+prompt|instructions|database\s+password|api\s*key)\b",
+        r"(?i)\b(?:database\s+password|db\s*credentials|secret\s*key|api\s*key)\b",
+        r"(?i)\byou\s+are\s+now\s+(?:in\s+)?(?:dan\s+mode|unrestricted|god\s+mode|developer\s+mode)\b",
         r"(?i)\bjailbreak\b",
-        r"(?i)\bact\s+as\s+(an\s+unfiltered|an\s+evil|a\s+hacked)\b",
-        r"(?i)\bpretend\s+you\s+have\s+no\s+(rules|ethics|guardrails)\b",
+        r"(?i)\bact\s+as\s+(?:an\s+unfiltered|an\s+evil|a\s+hacked)\b",
+        r"(?i)\bpretend\s+you\s+have\s+no\s+(?:rules|ethics|guardrails)\b",
+        r"(?i)\bprint\s+everything\s+above\b",
         r"(?i)<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>",
-        r"(?i)\b(drop\s+table|insert\s+into|select\s+\*\s+from\s+users)\b",
     ]
 
     # PII patterns
@@ -29,6 +55,7 @@ class SecurityGuardrails:
 
     def __init__(self, db_path: str | None = None):
         self.db_path = db_path or settings.sqlite_db_path
+        self._sql_regexes = [re.compile(p) for p in self.SQL_INJECTION_PATTERNS]
         self._injection_regexes = [re.compile(p) for p in self.INJECTION_PATTERNS]
         self._known_models_cache: set | None = None
 
@@ -68,7 +95,18 @@ class SecurityGuardrails:
                 "redactions": [],
             }
 
-        # 2. Prompt Injection / Jailbreak Check
+        # 2. SQL Injection Check (Anti-Hacking & Database Integrity Protection)
+        for regex in self._sql_regexes:
+            if regex.search(text):
+                return {
+                    "is_safe": False,
+                    "sanitized_text": text,
+                    "rejection_reason": "Security Alert: Malicious SQL injection or database tampering attempt blocked.",
+                    "pii_detected": False,
+                    "redactions": [],
+                }
+
+        # 3. Prompt Injection / Jailbreak / System Prompt Extraction Check
         for regex in self._injection_regexes:
             if regex.search(text):
                 return {
@@ -79,7 +117,7 @@ class SecurityGuardrails:
                     "redactions": [],
                 }
 
-        # 3. PII Redaction
+        # 4. PII Redaction
         sanitized = text
         redactions = []
 
@@ -162,6 +200,36 @@ class SecurityGuardrails:
             "hallucination_detected": len(warnings) > 0 or grounding_score < 0.6,
             "warnings": warnings,
         }
+
+    def scrub_sensitive_output(self, text: str) -> str:
+        """
+        Scans model output to ensure internal system secrets, filesystem paths,
+        database schemas, or API keys are never leaked to consumer users.
+        """
+        if not text:
+            return ""
+
+        scrubbed = text
+
+        # 1. Mask API keys or tokens
+        scrubbed = re.sub(r"(?i)\b(?:Bearer\s+|sk-|api_key\s*[:=]\s*)[a-zA-Z0-9_\-\.]{16,}\b", "[REDACTED_API_KEY]", scrubbed)
+        scrubbed = re.sub(r"\b[a-zA-Z0-9_\-]{32,}\b", "[REDACTED_TOKEN]", scrubbed)
+
+        # 2. Mask absolute file paths and database connection strings
+        scrubbed = re.sub(r"/(?:home|etc|var|usr|root)/[a-zA-Z0-9_\-\./]+", "[SYSTEM_PATH]", scrubbed)
+        scrubbed = re.sub(r"[a-zA-Z]:\\[a-zA-Z0-9_\-\.\\]+", "[SYSTEM_PATH]", scrubbed)
+        scrubbed = re.sub(r"(?i)\bdata/smartphones\.db\b", "catalog_database", scrubbed)
+
+        # 3. Mask leaked system instructions or prompt delimiters
+        scrubbed = re.sub(r"(?i)\byou are shopcart ai, an expert e-commerce.*?\n\n", "", scrubbed)
+        scrubbed = re.sub(r"(?i)\bdo not include internal reasoning.*?\n", "", scrubbed)
+        scrubbed = re.sub(r"</?AnswerToUser>", "", scrubbed, flags=re.IGNORECASE)
+
+        # 4. Mask database schema statements
+        scrubbed = re.sub(r"(?i)CREATE\s+TABLE\s+\w+\s*\(.*?\);?", "", scrubbed, flags=re.DOTALL)
+        scrubbed = re.sub(r"(?i)\b(?:sqlite_master|sqlite_schema)\b", "catalog_table", scrubbed)
+
+        return scrubbed.strip()
 
 
 security_guardrails = SecurityGuardrails()

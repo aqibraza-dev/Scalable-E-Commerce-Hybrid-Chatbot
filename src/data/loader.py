@@ -56,6 +56,7 @@ class DataLoader:
             "moto": "motorola",
         }
         df["brand"] = df["brand"].replace(brand_corrections)
+        df.loc[df["name"].str.startswith("nothing"), "brand"] = "nothing"
 
         # Fill missing values with business defaults
         df["has_5g"] = (
@@ -229,8 +230,20 @@ class DataLoader:
         return self._df
 
 
-def get_db_connection(db_path: str | None = None) -> sqlite3.Connection:
+def get_db_connection(
+    db_path: str | None = None,
+    read_only: bool = True
+) -> sqlite3.Connection:
+    """
+    Returns thread-safe SQLite connection configured for high-concurrency (WAL mode).
+    Enforces driver-level read-only protection (PRAGMA query_only = ON) by default
+    to physically prevent SQL injection mutations (DROP, DELETE, UPDATE, ALTER).
+    """
     target_path = db_path or settings.sqlite_db_path
-    conn = sqlite3.connect(target_path)
+    conn = sqlite3.connect(target_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    if read_only:
+        conn.execute("PRAGMA query_only = ON")
     return conn

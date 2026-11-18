@@ -3,6 +3,7 @@ import threading
 import time
 from typing import Any
 
+from src.chatbot.db_agent import DatabaseAgent, database_agent
 from src.chatbot.llm_bot import LLMChatbot, llm_chatbot
 from src.chatbot.semantic_cache import SemanticCache, global_semantic_cache
 from src.chatbot.typical_bot import TypicalChatbot, typical_chatbot
@@ -27,11 +28,13 @@ class HybridChatbotOrchestrator:
         semantic_cache: SemanticCache | None = None,
         typical_bot: TypicalChatbot | None = None,
         llm_bot: LLMChatbot | None = None,
+        db_agent: DatabaseAgent | None = None,
     ):
         self.guardrails = guardrails or security_guardrails
         self.semantic_cache = semantic_cache or global_semantic_cache
         self.typical_bot = typical_bot or typical_chatbot
         self.llm_bot = llm_bot or llm_chatbot
+        self.db_agent = db_agent or database_agent
 
         # Telemetry counters
         self._stats_lock = threading.Lock()
@@ -46,6 +49,24 @@ class HybridChatbotOrchestrator:
             "tokens_saved": 0,
             "total_latency_ms": 0.0,
         }
+
+    def _generate_chips(
+        self,
+        query: str,
+        products: list[dict[str, Any]] | None,
+        slots: dict[str, Any] | None = None,
+    ) -> list[str]:
+        """Generates dynamic follow-up suggestion chips."""
+        slots_dict = slots or self.db_agent.translate_requirements_to_filters(query)
+        chips = self.db_agent.generate_action_chips(query, products or [], slots_dict)
+        if not chips:
+            chips = [
+                "Best camera phone under ₹25k",
+                "Top 5G phones under ₹20,000",
+                "Compare Samsung vs Apple",
+                "7-day return policy",
+            ]
+        return chips[:4]
 
     async def handle_query(
         self,
@@ -221,6 +242,12 @@ class HybridChatbotOrchestrator:
                     "redactions": [],
                     "products": [target_phone],
                     "cart_action": {"type": "add", "product": target_phone},
+                    "action_chips": [
+                        "Open shopping bag",
+                        "View more specifications",
+                        f"Compare {target_phone['name'].title()} with S25",
+                        "Continue shopping",
+                    ],
                 }
 
         # ==========================================
@@ -246,13 +273,37 @@ class HybridChatbotOrchestrator:
                 "pii_redacted": guard_result["pii_detected"],
                 "redactions": guard_result["redactions"],
                 "guardrail_audit": guard_result,
+                "action_chips": [
+                    "Best camera phone under ₹20,000",
+                    "Top 5G smartphones",
+                    "What is your return policy?",
+                    "Compare Samsung vs Apple",
+                ],
             }
 
         sanitized_query = guard_result["sanitized_text"]
 
         # ==========================================
-        # Specialized Execution Modes (Testing / Baseline)
+        # Specialized Execution Modes (Testing / Baseline / Google ADK)
         # ==========================================
+        if mode in ["google_adk", "adk"]:
+            from src.agents.orchestrator import adk_orchestrator
+
+            adk_res = await adk_orchestrator.handle_query(
+                query=query,
+                user_id=kwargs.get("user_id", "guest_user"),
+                session_id=kwargs.get("session_id"),
+                history=history,
+                cart_items=cart_items,
+            )
+            elapsed_ms = round((time.perf_counter() - start_time) * 1000, 3)
+            with self._stats_lock:
+                self.stats["total_queries"] += 1
+                self.stats["llm_calls"] += 1
+                self.stats["tokens_consumed"] += adk_res.get("tokens_used", 150)
+                self.stats["total_latency_ms"] += elapsed_ms
+            return adk_res
+
         if mode == "typical_only":
             typ_res = self.typical_bot.process(sanitized_query)
             elapsed_ms = round((time.perf_counter() - start_time) * 1000, 3)
@@ -274,6 +325,7 @@ class HybridChatbotOrchestrator:
                 "pii_redacted": guard_result["pii_detected"],
                 "redactions": guard_result["redactions"],
                 "products": typ_res.get("products", []),
+                "action_chips": self._generate_chips(query, typ_res.get("products", [])),
             }
 
         if mode == "pure_llm":
@@ -282,6 +334,7 @@ class HybridChatbotOrchestrator:
             )
             elapsed_ms = round((time.perf_counter() - start_time) * 1000, 3)
             tok = llm_res["total_tokens"]
+            safe_text = self.guardrails.scrub_sensitive_output(llm_res["response"])
             with self._stats_lock:
                 self.stats["total_queries"] += 1
                 self.stats["llm_calls"] += 1
@@ -290,7 +343,7 @@ class HybridChatbotOrchestrator:
 
             return {
                 "query": query,
-                "response": llm_res["response"],
+                "response": safe_text,
                 "routing_tier": "TIER_4_PURE_LLM",
                 "tokens_used": tok,
                 "tokens_saved": 0,
@@ -301,6 +354,7 @@ class HybridChatbotOrchestrator:
                 "redactions": guard_result["redactions"],
                 "model_used": llm_res["model_used"],
                 "products": llm_res.get("context_products", []),
+                "action_chips": self._generate_chips(query, llm_res.get("context_products", [])),
             }
 
         # ==========================================
@@ -339,6 +393,7 @@ class HybridChatbotOrchestrator:
                 "pii_redacted": guard_result["pii_detected"],
                 "redactions": guard_result["redactions"],
                 "products": cached_match.get("products", []),
+                "action_chips": self._generate_chips(query, cached_match.get("products", [])),
             }
 
         # ==========================================
@@ -356,11 +411,13 @@ class HybridChatbotOrchestrator:
                 "OUT_OF_DOMAIN",
                 "EXTREMES_COMPARISON",
                 "POLICY_RETURN",
+                "POLICY_RETURN_DAYS",
                 "POLICY_WARRANTY",
                 "POLICY_SHIPPING",
                 "POLICY_EMI",
                 "COMPARISON",
                 "SPEC_INQUIRY",
+                "BENEFITS_INQUIRY",
             ]
 
             # Also check if it's a specific structured product query with explicit slots
@@ -372,41 +429,64 @@ class HybridChatbotOrchestrator:
                     slots["min_price"],
                     slots["min_ram"],
                     slots["has_5g"],
+                    slots["sort_by"],
+                    slots.get("min_battery"),
+                    slots.get("min_camera"),
                 ]
             )
 
             # If it's a deterministic search or known intent, use Typical Bot
             if is_deterministic or has_concrete_filters:
                 typ_res = self.typical_bot.process(sanitized_query)
-                # Store in cache for future duplicate/semantic requests
-                self.semantic_cache.store(
-                    sanitized_query,
-                    typ_res["response"],
-                    prompt_tokens=220,
-                    completion_tokens=100,
-                    products=typ_res.get("products", []),
-                )
-                elapsed_ms = round((time.perf_counter() - start_time) * 1000, 3)
+                products = typ_res.get("products", [])
 
-                with self._stats_lock:
-                    self.stats["total_queries"] += 1
-                    self.stats["typical_bot_routed"] += 1
-                    self.stats["tokens_saved"] += 320
-                    self.stats["total_latency_ms"] += elapsed_ms
+                # Check if deterministic bot successfully resolved the query
+                is_successful = True
+                if intent == "COMPARISON":
+                    if len(products) < 2:
+                        is_successful = False
+                elif intent in [
+                    "PRODUCT_SEARCH",
+                    "SPEC_INQUIRY",
+                    "BENEFITS_INQUIRY",
+                    "EXTREMES_COMPARISON",
+                ]:
+                    if len(products) == 0:
+                        is_successful = False
 
-                return {
-                    "query": query,
-                    "response": typ_res["response"],
-                    "routing_tier": "TIER_3_TYPICAL_BOT",
-                    "tokens_used": 0,
-                    "tokens_saved": 320,
-                    "cache_hit": False,
-                    "similarity_score": 0.0,
-                    "execution_time_ms": elapsed_ms,
-                    "pii_redacted": guard_result["pii_detected"],
-                    "redactions": guard_result["redactions"],
-                    "products": typ_res.get("products", []),
-                }
+                if is_successful:
+                    # Store in cache for future duplicate/semantic requests
+                    self.semantic_cache.store(
+                        sanitized_query,
+                        typ_res["response"],
+                        prompt_tokens=220,
+                        completion_tokens=100,
+                        products=products,
+                    )
+                    elapsed_ms = round((time.perf_counter() - start_time) * 1000, 3)
+
+                    with self._stats_lock:
+                        self.stats["total_queries"] += 1
+                        self.stats["typical_bot_routed"] += 1
+                        self.stats["tokens_saved"] += 320
+                        self.stats["total_latency_ms"] += elapsed_ms
+
+                    return {
+                        "query": query,
+                        "response": typ_res["response"],
+                        "routing_tier": "TIER_3_TYPICAL_BOT",
+                        "tokens_used": 0,
+                        "tokens_saved": 320,
+                        "cache_hit": False,
+                        "similarity_score": 0.0,
+                        "execution_time_ms": elapsed_ms,
+                        "pii_redacted": guard_result["pii_detected"],
+                        "redactions": guard_result["redactions"],
+                        "products": products,
+                        "action_chips": self._generate_chips(query, products, slots),
+                    }
+                # When deterministic bot cannot find matching products or resolves zero results,
+                # fall back to Tier 4 LLM RAG so the user gets an intelligent, helpful response!
 
         # ==========================================
         # Tier 4: LLM-Augmented Advisory Engine
@@ -416,13 +496,13 @@ class HybridChatbotOrchestrator:
             sanitized_query, user_history=history, force_virtual=force_virtual_llm
         )
 
+        final_response = self.guardrails.scrub_sensitive_output(llm_res["response"])
+        tokens_used = llm_res["total_tokens"]
+
         # Output Guardrail verification
         out_guard = self.guardrails.verify_output_grounding(
-            llm_res["response"], llm_res.get("context_products", [])
+            final_response, llm_res.get("context_products", [])
         )
-
-        final_response = llm_res["response"]
-        tokens_used = llm_res["total_tokens"]
 
         # Cache valid response to save tokens for future users
         self.semantic_cache.store(
@@ -455,6 +535,7 @@ class HybridChatbotOrchestrator:
             "model_used": llm_res["model_used"],
             "products": llm_res.get("context_products", []),
             "output_guardrail": out_guard,
+            "action_chips": self._generate_chips(query, llm_res.get("context_products", [])),
         }
 
     def get_business_impact_metrics(self) -> dict[str, Any]:

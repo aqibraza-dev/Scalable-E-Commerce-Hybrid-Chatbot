@@ -29,18 +29,30 @@ SYNONYMS = {
     "buy": "recommend",
     "give": "recommend",
     "get": "recommend",
+    "least": "lowest",
+    "min": "lowest",
+    "minimum": "lowest",
+    "smallest": "lowest",
+    "max": "highest",
+    "maximum": "highest",
+    "most": "highest",
+    "longest": "highest",
+    "hight": "highest",
+    "highet": "highest",
 }
 
 STOP_WORDS = {
     "what", "is", "the", "which", "are", "for", "in", "with", "a", "an",
     "of", "to", "me", "some", "i", "can", "you", "please", "want", "need",
-    "tell", "about", "my", "hi", "hello", "hey"
+    "tell", "about", "my", "hi", "hello", "hey",
+    "has", "have", "had", "does", "do", "did", "where", "how", "whose", "whom",
+    "give", "show", "get", "find", "suggest"
 }
 
 KNOWN_BRANDS = {
     "samsung", "apple", "xiaomi", "vivo", "oppo", "oneplus",
     "realme", "motorola", "iqoo", "poco", "tecno", "lava",
-    "infinix", "google", "nothing"
+    "infinix", "google", "nothing", "nokia", "honor", "micromax"
 }
 
 class SemanticCache:
@@ -53,7 +65,7 @@ class SemanticCache:
     def __init__(
         self,
         threshold: float = 0.70,
-        ttl_seconds: int = None,
+        ttl_seconds: int | None = None,
         cache: MultiTierCache | None = None
     ):
         self.threshold = threshold
@@ -105,7 +117,7 @@ class SemanticCache:
         return " ".join(norm_tokens)
 
     def extract_slots(self, text: str) -> dict[str, Any]:
-        """Extracts brand, price, and network slots to guarantee semantic precision."""
+        """Extracts brand, price, network, feature focus, and extremum direction for semantic precision."""
         t = text.lower()
         t = re.sub(r"₹|rs\.?|inr", " rupees ", t)
         t = re.sub(r"\b(\d+)k\b", r"\g<1>000", t)
@@ -132,8 +144,39 @@ class SemanticCache:
 
         # 3. 5G (respecting negations)
         has_5g = bool(re.search(r"\b5g\b", t)) and not bool(re.search(r"\b(not\s+5g|non\s+5g|no\s+5g)\b", t))
+        # 4. Feature focus slot (battery, camera, ram, storage, price, display)
+        feature = None
+        if re.search(r"\b(?:battery|backup|mah|power)\b", t):
+            feature = "battery"
+        elif re.search(r"\b(?:camera|cameras|photo|photos|mp|megapixel|megapixels|selfie)\b", t):
+            feature = "camera"
+        elif re.search(r"\b(?:ram|memory)\b", t):
+            feature = "ram"
+        elif re.search(r"\b(?:storage|rom)\b", t):
+            feature = "storage"
+        elif re.search(r"\b(?:price|cost|daam|sasta|mahanga|budget|cheap|expensive|affordable)\b", t):
+            feature = "price"
+        elif re.search(r"\b(?:display|screen|amoled|oled|refresh\s*rate|hz)\b", t):
+            feature = "display"
 
-        return {"brand": brand, "price": price, "has_5g": has_5g}
+        # 5. Extremum direction slot (asc vs desc)
+        direction = None
+        if re.search(r"\b(?:least|lowest|min|minimum|smallest|cheapest|cheepest|sasta|kam|entry)\b", t):
+            direction = "asc"
+        elif re.search(r"\b(?:highest|hight|max|maximum|most|top|best|costliest|expensive|mahanga|jyada|zyada|flagship|premium|longest)\b", t):
+            direction = "desc"
+
+        # 6. Intent type (comparison vs single search)
+        is_comp = bool(re.search(r"\b(?:compare|comparison|vs|versus|difference\s+between)\b", t))
+
+        return {
+            "brand": brand,
+            "price": price,
+            "has_5g": has_5g,
+            "feature": feature,
+            "direction": direction,
+            "is_comp": is_comp,
+        }
 
     def _rebuild_index(self) -> None:
         """Fits vectorizer on combined base corpus and cached queries."""
@@ -198,6 +241,23 @@ class SemanticCache:
 
                     # If 5G specified in either, both must match
                     if query_slots["has_5g"] != rec_slots.get("has_5g", False):
+                        continue
+
+                    # Feature focus (battery, camera, ram, etc.) must match if present
+                    if query_slots["feature"] != rec_slots.get("feature"):
+                        continue
+
+                    # Extremum direction: conflict if one is 'asc' (least/lowest) and other is not
+                    q_dir = query_slots.get("direction")
+                    r_dir = rec_slots.get("direction")
+                    if q_dir == "asc" or r_dir == "asc":
+                        if q_dir != r_dir:
+                            continue
+                    elif q_dir and r_dir and q_dir != r_dir:
+                        continue
+
+                    # Comparison intent must match
+                    if query_slots["is_comp"] != rec_slots.get("is_comp", False):
                         continue
 
                     if score > best_score:

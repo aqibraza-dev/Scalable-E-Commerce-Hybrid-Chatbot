@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.agents.orchestrator import adk_orchestrator
 from src.api.schemas import (
     ChatRequest,
     ChatResponse,
@@ -88,15 +89,99 @@ async def chat_endpoint(payload: ChatRequest):
     - Tier 1: Exact Query Cache (L1/Redis)
     - Tier 2: Semantic Similarity Cache (TF-IDF Cosine >= 0.75)
     - Tier 3: Typical Deterministic Bot (Rules / SQL / Spec lookup)
-    - Tier 4: LLM-Augmented RAG Engine
+    - Tier 4: LLM-Augmented RAG Engine / Google ADK Multi-Agent Team
     """
     res = await hybrid_orchestrator.handle_query(
         query=payload.query,
         mode=payload.mode,
         history=payload.history,
         cart_items=payload.cart_items,
+        user_id=payload.user_id,
+        session_id=payload.session_id,
     )
     return ChatResponse(**res)
+
+@app.post("/api/adk/chat", response_model=ChatResponse, tags=["Google ADK"])
+async def adk_chat_endpoint(payload: ChatRequest):
+    """
+    Dedicated Google ADK (Agent Development Kit) Multi-Agent Chat Endpoint.
+    Executes the query through the Google ADK Supervisor and specialized sub-agents:
+    - Catalog Search Specialist
+    - Database Schema & SQL Specialist
+    - Store Policy & Customer Care Specialist
+    - Shopping Advisor & Bag Specialist
+    """
+    res = await adk_orchestrator.handle_query(
+        query=payload.query,
+        user_id=payload.user_id or "guest_user",
+        session_id=payload.session_id,
+        history=payload.history,
+        cart_items=payload.cart_items,
+    )
+    return ChatResponse(**res)
+
+@app.get("/api/adk/agents", tags=["Google ADK"])
+async def get_adk_agents_endpoint():
+    """
+    Inspect registered Google ADK Agents, architectures, and assigned tools.
+    """
+    return adk_orchestrator.get_agent_team_info()
+
+@app.get("/goal", tags=["Documentation"])
+@app.get("/api/goal", tags=["Documentation"])
+async def get_goal_doc():
+    """Returns the Project Goal & Strategic Vision (/goal) documentation."""
+    from pathlib import Path
+    doc_path = Path("docs/GOAL.md")
+    content = doc_path.read_text(encoding="utf-8") if doc_path.exists() else ""
+    return {
+        "title": "Project Goal & Strategic Vision (/goal)",
+        "slug": "goal",
+        "file": "docs/GOAL.md",
+        "content": content,
+    }
+
+@app.get("/teamwork", tags=["Documentation"])
+@app.get("/api/teamwork", tags=["Documentation"])
+async def get_teamwork_doc():
+    """Returns the Google ADK Multi-Agent Teamwork Architecture (/teamwork) documentation."""
+    from pathlib import Path
+    doc_path = Path("docs/TEAMWORK.md")
+    content = doc_path.read_text(encoding="utf-8") if doc_path.exists() else ""
+    return {
+        "title": "Google ADK Multi-Agent Teamwork Architecture (/teamwork)",
+        "slug": "teamwork",
+        "file": "docs/TEAMWORK.md",
+        "content": content,
+    }
+
+@app.get("/learn", tags=["Documentation"])
+@app.get("/api/learn", tags=["Documentation"])
+async def get_learn_doc():
+    """Returns the Engineering Learnings & Architectural Principles (/learn) documentation."""
+    from pathlib import Path
+    doc_path = Path("docs/LEARN.md")
+    content = doc_path.read_text(encoding="utf-8") if doc_path.exists() else ""
+    return {
+        "title": "Engineering Learnings & Architectural Principles (/learn)",
+        "slug": "learn",
+        "file": "docs/LEARN.md",
+        "content": content,
+    }
+
+@app.get("/boost", tags=["Documentation"])
+@app.get("/api/boost", tags=["Documentation"])
+async def get_boost_doc():
+    """Returns the Enterprise Performance Boost & Optimization Benchmarks (/boost) documentation."""
+    from pathlib import Path
+    doc_path = Path("docs/BOOST.md")
+    content = doc_path.read_text(encoding="utf-8") if doc_path.exists() else ""
+    return {
+        "title": "Enterprise Performance Boost & Optimization Benchmarks (/boost)",
+        "slug": "boost",
+        "file": "docs/BOOST.md",
+        "content": content,
+    }
 
 @app.post("/api/search", response_model=SearchResponse, tags=["Search"])
 async def search_endpoint(
@@ -108,6 +193,14 @@ async def search_endpoint(
     Sub-millisecond query execution utilizing composite B-Tree indexes,
     SQLite FTS5 BM25 keyword matching, two-tier caching, and faceted aggregation.
     """
+    if payload.query:
+        guard_res = security_guardrails.inspect_input(payload.query)
+        if not guard_res["is_safe"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=guard_res["rejection_reason"]
+            )
+
     res = engine.search(
         query=payload.query,
         brand=payload.brand,

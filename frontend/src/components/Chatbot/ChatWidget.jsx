@@ -33,6 +33,12 @@ const INITIAL_GREETING = {
   tokens_saved: 350,
   execution_time_ms: 0.8,
   cache_hit: true,
+  action_chips: [
+    "Best camera phone under 10k rupees",
+    "Best camera phone under mid budget",
+    "Sabse sasta aur mahanga phone dikhao",
+    "What is your return policy?",
+  ],
   timestamp: Date.now(),
 };
 
@@ -76,6 +82,7 @@ export default function ChatWidget({ isOpen, onClose, initialQuery = '' }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [chatMode, setChatMode] = useState('google_adk');
 
   const messagesEndRef = useRef(null);
 
@@ -226,9 +233,9 @@ export default function ChatWidget({ isOpen, onClose, initialQuery = '' }) {
     return { handled: false };
   };
 
-  const handleSendMessage = async (e) => {
+  const handleSendMessage = async (e, textOverride = null) => {
     e?.preventDefault();
-    const query = inputText.trim();
+    const query = (textOverride !== null ? textOverride : inputText).trim();
     if (!query || isLoading) return;
 
     // Check guest limit
@@ -270,6 +277,12 @@ export default function ChatWidget({ isOpen, onClose, initialQuery = '' }) {
           execution_time_ms: local.execution_time_ms,
           cart_action: local.cart_action,
           products: local.products || [],
+          action_chips: local.action_chips || [
+            "Best camera phone under 20k",
+            "5G Smartphones Only",
+            "7-Day Return Policy",
+            "Compare Samsung vs Apple",
+          ],
           timestamp: Date.now(),
         };
         updateSessionMessages(activeSessionId, [...updatedMessages, botMsg]);
@@ -290,7 +303,8 @@ export default function ChatWidget({ isOpen, onClose, initialQuery = '' }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: query,
-          mode: 'hybrid',
+          mode: chatMode,
+          session_id: activeSessionId,
           user_id: user?.id || 'guest_user',
           history: recentHistory,
           cart_items: cart,
@@ -321,6 +335,7 @@ export default function ChatWidget({ isOpen, onClose, initialQuery = '' }) {
         redactions: data.redactions,
         products: data.products || [],
         cart_action: data.cart_action,
+        action_chips: data.action_chips || [],
         timestamp: Date.now(),
       };
 
@@ -376,6 +391,12 @@ export default function ChatWidget({ isOpen, onClose, initialQuery = '' }) {
             <Bot className="w-2.5 h-2.5" /> HYBRID LLM RAG ({timeMs}ms)
           </span>
         );
+      case 'GOOGLE_ADK_AGENT_TEAM':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-mono font-bold">
+            <Sparkles className="w-2.5 h-2.5 text-blue-600" /> GOOGLE ADK MULTI-AGENT ({timeMs}ms)
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-neutral-100 border border-neutral-200 text-neutral-600 text-[10px] font-mono">
@@ -429,6 +450,30 @@ export default function ChatWidget({ isOpen, onClose, initialQuery = '' }) {
           </div>
 
           <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-1 p-1 bg-neutral-100 rounded-full border border-neutral-200">
+              <button
+                type="button"
+                onClick={() => setChatMode('google_adk')}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${
+                  chatMode === 'google_adk'
+                    ? 'bg-[#0B4232] text-white shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                Google ADK
+              </button>
+              <button
+                type="button"
+                onClick={() => setChatMode('hybrid')}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${
+                  chatMode === 'hybrid'
+                    ? 'bg-[#0B4232] text-white shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                5-Tier Hybrid
+              </button>
+            </div>
             <button
               onClick={() => setIsExpanded(!isExpanded)}
               className="p-2 text-neutral-500 hover:text-neutral-900 rounded-xl hover:bg-neutral-100 transition-colors"
@@ -568,22 +613,64 @@ export default function ChatWidget({ isOpen, onClose, initialQuery = '' }) {
                                 <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
                                   {prod.ram ? `${Math.round(prod.ram)}GB RAM` : '8GB'} • {prod.primary_rear_camera || 50}MP • {prod.battery_cap}mAh
                                 </div>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {prod.has_5g === 'Yes' && (
+                                    <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-mono font-bold">
+                                      5G
+                                    </span>
+                                  )}
+                                  {prod.has_fast_charging === 'Yes' && (
+                                    <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-[9px] font-mono font-bold">
+                                      Fast Charge
+                                    </span>
+                                  )}
+                                  {prod.display_size && (
+                                    <span className="px-1.5 py-0.2 rounded bg-neutral-200 text-neutral-700 text-[9px] font-mono">
+                                      {prod.display_size}" {prod.display_type ? prod.display_type.split(' ')[0].toUpperCase() : ''}
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="flex items-center justify-between mt-2">
                                   <span className="text-xs font-extrabold text-neutral-900 font-sans">
                                     ₹{(prod.price || 0).toLocaleString('en-IN')}
                                   </span>
-                                  <button
-                                    onClick={() => addToCart(prod)}
-                                    className="px-3 py-1 rounded-full bg-[#0B4232] hover:bg-[#064E3B] text-white text-[10px] font-bold uppercase transition-colors flex items-center gap-1 shadow-xs"
-                                  >
-                                    <ShoppingBag className="w-3 h-3" />
-                                    <span>ADD</span>
-                                  </button>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={() => handleSendMessage(null, `Specs of ${prod.name}`)}
+                                      className="px-2 py-1 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] font-semibold transition-colors"
+                                      title="View specs"
+                                    >
+                                      Specs
+                                    </button>
+                                    <button
+                                      onClick={() => addToCart(prod)}
+                                      className="px-3 py-1 rounded-full bg-[#0B4232] hover:bg-[#064E3B] text-white text-[10px] font-bold uppercase transition-colors flex items-center gap-1 shadow-xs"
+                                    >
+                                      <ShoppingBag className="w-3 h-3" />
+                                      <span>ADD</span>
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           ))}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Action Suggestion Chips */}
+                    {msg.sender !== 'user' && msg.action_chips && msg.action_chips.length > 0 && (
+                      <div className="mt-3 pt-2.5 border-t border-neutral-100 flex flex-wrap gap-1.5">
+                        {msg.action_chips.map((chip, cIdx) => (
+                          <button
+                            key={cIdx}
+                            onClick={() => handleSendMessage(null, chip)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-200/80 text-[#0B4232] text-xs font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] shadow-2xs"
+                          >
+                            <Sparkles className="w-3 h-3 text-emerald-600" />
+                            <span>{chip}</span>
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -615,7 +702,7 @@ export default function ChatWidget({ isOpen, onClose, initialQuery = '' }) {
                 <button
                   key={p}
                   onClick={() => {
-                    setInputText(p);
+                    handleSendMessage(null, p);
                   }}
                   className="px-3 py-1 rounded-full bg-neutral-100 hover:bg-emerald-50 hover:text-[#0B4232] border border-neutral-200/80 text-neutral-700 text-xs whitespace-nowrap transition-colors"
                 >

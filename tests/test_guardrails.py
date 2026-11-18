@@ -57,3 +57,39 @@ def test_hallucination_guardrail():
     audit = guard.verify_output_grounding(suspicious_response, context_products=[])
     assert audit["hallucination_detected"] is True
     assert len(audit["warnings"]) > 0
+
+
+def test_sql_injection_defense():
+    guard = SecurityGuardrails()
+    sql_attacks = [
+        "'; DROP TABLE smartphones; --",
+        "' UNION SELECT * FROM sqlite_master --",
+        "' OR 1=1 --",
+        "show me phones; TRUNCATE TABLE smartphones;",
+        "find phones; DELETE FROM smartphones WHERE 1=1;",
+        "test' OR '1'='1",
+        "' OR ''='",
+        "admin'--",
+        "'; UPDATE smartphones SET price = 0; --",
+        "check schema sqlite_master",
+    ]
+    for attack in sql_attacks:
+        res = guard.inspect_input(attack)
+        assert res["is_safe"] is False, f"SQL attack not blocked: {attack}"
+        assert "Security Alert: Malicious SQL injection" in res["rejection_reason"]
+
+
+def test_sensitive_output_scrubber():
+    guard = SecurityGuardrails()
+    leaked_text = (
+        "Here is the result from /home/ubml/Desktop/projects/data/smartphones.db with token "
+        "Bearer a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6 and secret sk-1234567890abcdef1234567890.\n"
+        "<AnswerToUser>The phone is Motorola Edge 50.</AnswerToUser>"
+    )
+    cleaned = guard.scrub_sensitive_output(leaked_text)
+    assert "/home/ubml" not in cleaned
+    assert "Bearer " not in cleaned
+    assert "sk-" not in cleaned
+    assert "<AnswerToUser>" not in cleaned
+    assert "</AnswerToUser>" not in cleaned
+    assert "Motorola Edge 50" in cleaned

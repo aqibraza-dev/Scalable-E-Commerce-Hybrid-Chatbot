@@ -32,6 +32,17 @@ async def test_api_search():
 
 
 @pytest.mark.asyncio
+async def test_api_search_sql_injection_blocked():
+    payload = {"query": "'; DROP TABLE smartphones; --"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        resp = await ac.post("/api/search", json=payload)
+    assert resp.status_code == 400
+    assert "Security Alert: Malicious SQL injection" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_api_natural_language_search():
     payload = {"query": "Find 5G phones under ₹25,000 with 8GB RAM", "limit": 5}
     async with httpx.AsyncClient(

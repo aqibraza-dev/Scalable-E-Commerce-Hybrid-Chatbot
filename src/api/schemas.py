@@ -8,9 +8,10 @@ class ChatRequest(BaseModel):
         ..., min_length=1, max_length=500, description="User query or search phrase"
     )
     mode: str = Field(
-        "hybrid", description="Execution mode: hybrid, pure_llm, typical_only"
+        "hybrid", description="Execution mode: hybrid, pure_llm, typical_only, google_adk"
     )
     user_id: str | None = Field("guest_user", description="Optional user identifier")
+    session_id: str | None = Field(None, description="Optional Google ADK session identifier")
     history: list[dict[str, Any]] | None = Field(
         default=[], description="Recent multi-turn conversation history"
     )
@@ -47,6 +48,7 @@ class ChatResponse(BaseModel):
     products: list[dict[str, Any]] | None = []
     model_used: str | None = None
     cart_action: dict[str, Any] | None = None
+    action_chips: list[str] = []
 
 
 class SearchRequest(BaseModel):
@@ -86,4 +88,4 @@ class GuardrailCheckResponse(BaseModel):
 
 
 class ProductPriceUpdateRequest(BaseModel):
-    price: int = Field(..., gt=0, description="New price in INR")
+    price: int = Field(..., gt=0, le=10000000, description="New price in INR")

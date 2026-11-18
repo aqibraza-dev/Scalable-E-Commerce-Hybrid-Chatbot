@@ -1,7 +1,7 @@
 {
   "dataset_summary": {
     "total_smartphones": 3260,
-    "total_unique_brands": 32,
+    "total_unique_brands": 33,
     "total_processors": 15
   },
   "price_metrics_inr": {
@@ -61,7 +61,7 @@
   "brand_market_share_top10": {
     "samsung": 9.66,
     "realme": 9.26,
-    "other": 8.8,
+    "other": 8.47,
     "xiaomi": 7.48,
     "vivo": 7.15,
     "oppo": 5.34,

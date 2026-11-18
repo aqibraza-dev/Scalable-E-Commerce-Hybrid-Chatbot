@@ -40,11 +40,50 @@ class TypicalChatbot:
     BRANDS = [
         "samsung", "apple", "xiaomi", "vivo", "oppo", "oneplus",
         "realme", "motorola", "iqoo", "poco", "tecno", "lava",
-        "infinix", "google", "nothing"
+        "infinix", "google", "nothing", "nokia", "honor", "micromax"
     ]
 
     def __init__(self, search_engine: SearchEngine | None = None):
         self.search_engine = search_engine or SearchEngine()
+
+    def _resolve_comparison_target(self, name: str) -> dict[str, Any] | None:
+        """Resolves model name, brand flagship, or concept target for comparisons."""
+        if not name:
+            return None
+        # 1. Direct search (no relaxation to avoid returning wrong models for fictional names)
+        direct_res = self.search_engine.search(query=name, relax_query=False, limit=1)
+        if direct_res["products"]:
+            return direct_res["products"][0]
+
+        # 2. Concept / Brand fallback
+        na = self.search_engine._normalize_query(name)
+        brand = next((b for b in self.BRANDS if b in na), None)
+
+        if any(w in na for w in ["cheap", "lowest", "least price", "sasta", "budget", "affordable"]):
+            res = self.search_engine.search(brand=brand, sort_by="price_asc", limit=1)
+            return res["products"][0] if res["products"] else None
+
+        if any(w in na for w in ["camera", "photo", "selfie", "mp"]):
+            res = self.search_engine.search(brand=brand, sort_by="camera_desc", limit=1)
+            return res["products"][0] if res["products"] else None
+
+        if any(w in na for w in ["battery", "backup", "power", "mah"]):
+            res = self.search_engine.search(brand=brand, sort_by="battery_desc", limit=1)
+            return res["products"][0] if res["products"] else None
+
+        if any(w in na for w in ["ram", "memory", "gaming", "performance", "fastest"]):
+            res = self.search_engine.search(brand=brand, sort_by="ram_desc", limit=1)
+            return res["products"][0] if res["products"] else None
+
+        # If a known brand is present OR query is explicitly asking for best/flagship/top/premium
+        has_flagship_term = any(w in na for w in ["best", "flagship", "premium", "top", "expensive", "costliest", "ultra", "mahanga"])
+        if brand or has_flagship_term:
+            flag_res = self.search_engine.search(brand=brand, min_price=50000, sort_by="price_desc", limit=1)
+            if not flag_res["products"]:
+                flag_res = self.search_engine.search(brand=brand, sort_by="price_desc", limit=1)
+            return flag_res["products"][0] if flag_res["products"] else None
+
+        return None
 
     def extract_slots(self, text: str) -> dict[str, Any]:
         """Extracts structured search parameters (brand, budget, RAM, 5G, battery) from text."""
@@ -54,6 +93,11 @@ class TypicalChatbot:
     def classify_intent(self, text: str) -> str:
         """Classifies query into high-level intent."""
         t = text.lower().strip()
+
+        # Typo normalizations for common phonetics and misspellings
+        t = re.sub(r"\bweather\b(?=\s+(?:i|we|can|could|if|you|they|a|the|it|is|was|one)\b)", "whether", t)
+        t = re.sub(r"\bpriminum\b|\bprimum\b|\bpremiun\b|\bpreimum\b", "premium", t)
+        t = re.sub(r"\bedgee\b|\bedg\b", "edge", t)
 
         # Persona & Bot Identity FAQ
         persona_patterns = [
@@ -82,39 +126,66 @@ class TypicalChatbot:
         if any(re.search(p, t) for p in small_talk_patterns):
             return "SMALL_TALK"
 
-        # General Trivia / Out-of-Domain questions
-        out_of_domain_patterns = [
-            r"\b(joke|jokes|make\s+me\s+laugh|tell\s+me\s+something\s+funny)\b",
-            r"\b(weather|forecast|temperature|rain|humidity)\b",
-            r"\b(capital\s+of|president\s+of|prime\s+minister|population\s+of|who\s+won)\b",
-            r"\b(poem|poetry|song|sing|dance|story|essay)\b",
-            r"\b(write\s+(?:python|code|script|essay|story|program)|solve\s+(?:math|equation))\b",
-            r"\b(calculate\s+\d|\d+\s*[\+\-\*\/]\s*\d+)\b",
-            r"\b(recipe|cooking|movie|celebrity|news\s+today|horoscope)\b",
-        ]
-        if any(re.search(p, t) for p in out_of_domain_patterns):
-            return "OUT_OF_DOMAIN"
+        # Hinglish / English Dual Extremes ("compare cheapest and priminum phones", "sabse sasta aur mahanga")
+        is_cheap_term = bool(re.search(r"\b(cheapest|cheepest|lowest\s+price|most\s+affordable|sasta|sabse\s+sasta|budget\s+phone)\b", t))
+        is_premium_term = bool(re.search(r"\b(premium|priminum|primum|premiun|preimum|most\s+expensive|costliest|flagship|highest\s+price|mahanga|sabse\s+mahanga|ultra\s+flagship)\b", t))
+        if is_cheap_term and is_premium_term:
+            return "EXTREMES_COMPARISON"
 
-        # Hinglish / English Dual Extremes ("sabse sasta aur mahanga")
         if re.search(
             r"(?:sabse\s+)?sasta.*(?:aur|and).*(?:sabse\s+)?mahanga|(?:cheapest|lowest\s+price|most\s+affordable).*(?:and|aur).*(?:most\s+expensive|costliest|flagship|highest\s+price)|(?:most\s+expensive|costliest|highest\s+price).*(?:and|aur).*(?:cheapest|lowest\s+price|sasta)|(?:sabse\s+)?mahanga.*(?:aur|and).*(?:sabse\s+)?sasta",
             t,
         ):
             return "EXTREMES_COMPARISON"
 
-        # Greeting intent
-        if re.match(r"^(hi|hello|hey|greetings|howdy)\b", t):
-            return "GREETING"
+        # Policy FAQs (Prioritized before out-of-domain to avoid false negatives on customer service inquiries)
+        is_return_inquiry = bool(re.search(r"\b(return|refund|exchange|replace|give\s+back|send\s+back|take\s+back|money\s+back|return\s+policy|return\s+days|return\s+window)\b", t))
+        is_7_days_return = bool(re.search(r"\b(?:more\s+than|after|past|exceeding|over|used\s+for)\s+(?:7|seven)\s+days\b|\b(?:7|seven)\s+days\s+(?:later|over|past|used)\b", t))
 
-        # Policy FAQs
-        if any(w in t for w in ["return", "refund", "exchange", "replace"]):
+        if is_return_inquiry or (("give back" in t or "return" in t or "send back" in t) and ("phone" in t or "device" in t or "days" in t)):
+            if is_7_days_return or ("7 days" in t and ("used" in t or "more" in t or "after" in t)):
+                return "POLICY_RETURN_DAYS"
             return "POLICY_RETURN"
+
         if any(w in t for w in ["warranty", "guarantee"]):
             return "POLICY_WARRANTY"
         if any(w in t for w in ["delivery", "shipping", "courier", "track"]):
             return "POLICY_SHIPPING"
         if any(w in t for w in ["emi", "installment", "finance", "discount"]):
             return "POLICY_EMI"
+
+        # General Trivia / Out-of-Domain questions (Protected by e-commerce context check)
+        has_ecommerce_context = any(
+            w in t
+            for w in [
+                "phone", "phones", "mobile", "mobiles", "smartphone", "buy", "price",
+                "order", "delivery", "warranty", "return", "refund", "give back",
+                "send back", "cart", "shopcart", "camera", "battery", "specs", "specification"
+            ]
+        )
+        if not has_ecommerce_context:
+            out_of_domain_patterns = [
+                r"\b(joke|jokes|make\s+me\s+laugh|tell\s+me\s+something\s+funny)\b",
+                r"\b(weather|forecast|temperature|rain|humidity)\b",
+                r"\b(capital\s+of|president\s+of|prime\s+minister|population\s+of|who\s+won)\b",
+                r"\b(poem|poetry|song|sing|dance|story|essay)\b",
+                r"\b(write\s+(?:python|code|script|essay|story|program)|solve\s+(?:math|equation))\b",
+                r"\b(calculate\s+\d|\d+\s*[\+\-\*\/]\s*\d+)\b",
+                r"\b(recipe|cooking|movie|celebrity|news\s+today|horoscope)\b",
+            ]
+            if any(re.search(p, t) for p in out_of_domain_patterns):
+                return "OUT_OF_DOMAIN"
+
+        # Greeting intent
+        if re.match(r"^(hi|hello|hey|greetings|howdy)\b", t):
+            return "GREETING"
+
+        # Product Benefits Inquiry ("benefits of moto edge 50", "advantages of samsung galaxy s24")
+        if re.search(
+            r"\b(benefit|benefits|advantage|advantages|pros\s+and\s+cons|why\s+buy|why\s+should\s+i\s+buy|highlights\s+of|features\s+and\s+benefits)\b",
+            t,
+        ):
+            return "BENEFITS_INQUIRY"
 
         # Comparison intent ("compare X and Y", "X vs Y", "chart comparing X and Y")
         if (
@@ -141,76 +212,74 @@ class TypicalChatbot:
         if any(re.search(p, t) for p in advisory_patterns):
             return "SUBJECTIVE_ADVISORY"
 
-        # Check if query is a catalog search query
-        is_search_intent = any(
+        # Check if query is an inquiry about a specific phone's specs
+        is_extremum_query = any(
             w in t
             for w in [
-                "phones",
-                "mobiles",
-                "devices",
-                "under",
-                "below",
-                "between",
-                "less than",
-                "cheapest",
-                "find me",
-                "show me",
-                "suggest",
-                "recommend",
+                "least", "lowest", "highest", "hight", "cheapest", "costliest",
+                "best", "top", "kam", "sabse", "which phone", "which mobile"
             ]
         )
-
-        if not is_search_intent:
-            # Spec inquiry ("what is the battery of X", "camera of Y", "specs of Z", "details of W")
-            spec_terms = [
-                "battery",
-                "camera",
-                "display",
-                "screen",
-                "processor",
-                "spec",
-                "specs",
-                "specification",
-                "specifications",
+        spec_terms = [
+            "battery",
+            "camera",
+            "display",
+            "screen",
+            "processor",
+            "spec",
+            "specs",
+            "specification",
+            "specifications",
+            "price",
+            "cost",
+            "ram",
+            "storage",
+        ]
+        has_spec_term = any(re.search(r"\b" + re.escape(w) + r"\b", t) for w in spec_terms)
+        has_inquiry_starter = any(
+            t.startswith(prefix)
+            for prefix in [
+                "what is the",
+                "what are the",
+                "what is its",
+                "what is",
+                "how is the",
+                "how is its",
+                "how is",
+                "display of",
+                "spec of",
+                "specs of",
+                "tell me about",
+                "details of",
+                "camera of",
+                "battery of",
+                "price of",
+                "cost of",
+                "ram of",
+                "storage of",
             ]
-            has_spec_term = any(w in t for w in spec_terms)
-            has_inquiry_starter = any(
+        )
+        has_brand = any(re.search(r"\b" + re.escape(b) + r"\b", t) for b in self.BRANDS) or any(
+            re.search(r"\b" + re.escape(m) + r"\b", t) for m in ["iphone", "pixel", "galaxy", "redmi", "nord", "edge"]
+        )
+
+        if not is_extremum_query and (
+            (has_inquiry_starter and (has_brand or has_spec_term))
+            or (has_spec_term and has_brand and any(w in t for w in [" of ", " for "]))
+            or any(
                 t.startswith(prefix)
                 for prefix in [
-                    "what is the",
-                    "what are the",
-                    "what is its",
-                    "what is",
-                    "how is the",
-                    "how is its",
-                    "how is",
+                    "what is the battery",
+                    "what is the camera",
+                    "what is the price",
+                    "what is the ram",
                     "display of",
                     "spec of",
                     "specs of",
-                    "tell me about",
-                    "details of",
-                    "camera of",
-                    "battery of",
-                    "price of",
                 ]
             )
-            has_brand = any(b in t for b in self.BRANDS)
-
-            if (
-                (has_spec_term and has_brand)
-                or (has_inquiry_starter and has_brand)
-                or any(
-                    t.startswith(prefix)
-                    for prefix in [
-                        "what is the battery",
-                        "what is the camera",
-                        "display of",
-                        "spec of",
-                        "specs of",
-                    ]
-                )
-            ):
-                return "SPEC_INQUIRY"
+        ):
+            return "SPEC_INQUIRY"
 
         # Default to product search
         return "PRODUCT_SEARCH"
@@ -261,21 +330,63 @@ class TypicalChatbot:
 
         elif intent == "EXTREMES_COMPARISON":
             cheap_res = self.search_engine.search(sort_by="price_asc", limit=1)
-            flag_res = self.search_engine.search(sort_by="price_desc", limit=1)
+            flag_res = self.search_engine.search(min_price=50000, sort_by="price_desc", limit=1)
+            if not flag_res["products"]:
+                flag_res = self.search_engine.search(sort_by="price_desc", limit=1)
             p_cheap = cheap_res["products"][0] if cheap_res["products"] else None
             p_flag = flag_res["products"][0] if flag_res["products"] else None
             products = [p for p in [p_cheap, p_flag] if p]
             if p_cheap and p_flag:
                 response_text = (
-                    "📊 **Sabse Sasta (Cheapest) vs Sabse Mahanga (Ultra Flagship) Phone**:\n\n"
-                    f"**1. Sabse Sasta**: **{p_cheap['name'].title()}** — **₹{p_cheap['price']:,}**\n"
-                    f"   - {int(p_cheap['ram'])}GB RAM | {p_cheap['battery_cap']}mAh | {int(p_cheap['primary_rear_camera'])}MP Camera | 5G: {p_cheap['has_5g']}\n\n"
-                    f"**2. Sabse Mahanga**: **{p_flag['name'].title()}** — **₹{p_flag['price']:,}**\n"
-                    f"   - {int(p_flag['ram'])}GB RAM | {p_flag['battery_cap']}mAh | {int(p_flag['primary_rear_camera'])}MP Camera | 5G: {p_flag['has_5g']}\n\n"
-                    "Both smartphones are available with instant checkout and 7-day return guarantee!"
+                    "📊 **Comparison: Most Affordable (Sabse Sasta) vs Ultra-Flagship (Sabse Mahanga)**\n\n"
+                    f"| Feature | 🏷️ {p_cheap['name'].title()} (Budget) | 👑 {p_flag['name'].title()} (Flagship) |\n"
+                    f"|---|---|---|\n"
+                    f"| **Price** | ₹{p_cheap['price']:,} | ₹{p_flag['price']:,} |\n"
+                    f"| **RAM / Storage** | {int(p_cheap['ram'])}GB / {int(p_cheap['storage'])}GB | {int(p_flag['ram'])}GB / {int(p_flag['storage'])}GB |\n"
+                    f"| **Camera** | {int(p_cheap['primary_rear_camera'])}MP Rear | {int(p_flag['primary_rear_camera'])}MP Rear |\n"
+                    f"| **Battery** | {p_cheap['battery_cap']} mAh | {p_flag['battery_cap']} mAh |\n"
+                    f"| **5G Support** | {p_cheap['has_5g']} | {p_flag['has_5g']} |\n"
+                    f"| **Display** | {p_cheap['display_size']}\" {p_cheap['display_type'].title()} | {p_flag['display_size']}\" {p_flag['display_type'].title()} ({int(p_flag['refresh_rate'])}Hz) |\n"
+                    f"| **Processor** | {p_cheap['processor_brand'].title()} | {p_flag['processor_brand'].title()} |\n\n"
+                    f"💡 **Recommendation**: Choose the **{p_cheap['name'].title()}** for basic calls, messaging, and maximum affordability. "
+                    f"Choose the **{p_flag['name'].title()}** for top-tier photography, gaming, and premium multitasking.\n\n"
+                    "Both smartphones are available with instant checkout, 7-day replacement, and express delivery!"
                 )
             else:
                 response_text = "Catalog currently does not contain matching smartphones."
+
+        elif intent == "POLICY_RETURN_DAYS":
+            response_text = (
+                "📦 **Return Policy for Phones Used More than 7 Days**:\n\n"
+                "- ⏱️ **7-Day Standard Return Window**: Shopcart offers a hassle-free 7-day replacement or 100% money-back return for smartphones in original condition with box and IMEI intact.\n"
+                "- ⚠️ **Used for More than 7 Days**: Once the 7-day delivery window has passed, standard retail returns or refunds cannot be accepted through the store.\n"
+                "- 🛡️ **1-Year Manufacturer Warranty**: Even though the 7-day store return period has ended, your smartphone is fully covered under the **1-Year Comprehensive Manufacturer Warranty**! If you experience any hardware issues, battery degradation, or defects, authorized brand service centers pan-India will repair or replace parts free of charge.\n\n"
+                "Would you like me to help check authorized service center details for your phone brand?"
+            )
+
+        elif intent == "BENEFITS_INQUIRY":
+            # Extract clean phone name
+            cleaned_name = re.sub(
+                r"\b(?:benefits?|advantages?|pros\s+and\s+cons|why\s+(?:should\s+i\s+)?buy|highlights?|features?\s+and\s+benefits?|of|for|about|the)\b",
+                " ",
+                query,
+                flags=re.IGNORECASE,
+            ).strip()
+            res = self.search_engine.search(query=cleaned_name, limit=1)
+            if res["products"]:
+                p = res["products"][0]
+                products = [p]
+                response_text = (
+                    f"✨ **Key Benefits of the {p['name'].title()}** (₹{p['price']:,}):\n\n"
+                    f"- 🚀 **Performance & Multitasking**: Powered by {p['processor_brand'].title()} ({int(p['num_core'])}-core) with {int(p['ram'])}GB RAM and {int(p['storage'])}GB storage for responsive everyday speed and multitasking.\n"
+                    f"- 📸 **Camera Clarity**: Features a {int(p['primary_rear_camera'])}MP main camera and {int(p['primary_front_camera'])}MP front camera for crisp photos and 4K recording.\n"
+                    f"- 🔋 **All-Day Battery**: Long-lasting {p['battery_cap']} mAh battery equipped with {p['has_fast_charging']} fast charging support.\n"
+                    f"- 📱 **Display Experience**: {p['display_size']}\" {p['display_type'].title()} screen with {int(p['refresh_rate'])}Hz refresh rate for fluid scrolling.\n"
+                    f"- ⚡ **5G Ready**: {'Yes, supports ultra-fast 5G networks across India' if p['has_5g'] == 'Yes' else 'Reliable 4G LTE network support'}.\n\n"
+                    f"Click below to add the **{p['name'].title()}** to your bag with instant checkout!"
+                )
+            else:
+                response_text = f"Could not find model details for '{cleaned_name}'. Please verify the model name or ask for recommendations."
 
         elif intent == "SUBJECTIVE_ADVISORY":
             slots = self.extract_slots(query)
@@ -337,45 +448,67 @@ class TypicalChatbot:
             parts = re.split(r"\s+(?:vs|versus|and|with|to)\s+", cleaned)
             if len(parts) >= 2:
                 name_a, name_b = parts[0].strip(), parts[1].strip()
-                comp = self.search_engine.compare_products(name_a, name_b)
-                p_a, p_b = comp["product_a"], comp["product_b"]
+                p_a = self._resolve_comparison_target(name_a)
+                p_b = self._resolve_comparison_target(name_b)
+
                 if p_a and p_b:
                     products = [p_a, p_b]
+                    ram_a = f"{p_a['ram']} GB" if p_a["ram"] < 1 else f"{int(p_a['ram'])} GB"
+                    ram_b = f"{p_b['ram']} GB" if p_b["ram"] < 1 else f"{int(p_b['ram'])} GB"
+                    cam_a = f"{p_a['primary_rear_camera']} MP" if p_a["primary_rear_camera"] < 1 else f"{int(p_a['primary_rear_camera'])} MP"
+                    cam_b = f"{p_b['primary_rear_camera']} MP" if p_b["primary_rear_camera"] < 1 else f"{int(p_b['primary_rear_camera'])} MP"
                     response_text = (
                         f"⚖️ **Comparison: {p_a['name'].title()} vs {p_b['name'].title()}**\n\n"
                         f"| Feature | {p_a['name'].title()} | {p_b['name'].title()} |\n"
                         f"|---|---|---|\n"
                         f"| **Price** | ₹{p_a['price']:,} | ₹{p_b['price']:,} |\n"
-                        f"| **RAM** | {int(p_a['ram'])} GB | {int(p_b['ram'])} GB |\n"
+                        f"| **RAM** | {ram_a} | {ram_b} |\n"
                         f"| **Storage** | {int(p_a['storage'])} GB | {int(p_b['storage'])} GB |\n"
                         f"| **Battery** | {p_a['battery_cap']} mAh | {p_b['battery_cap']} mAh |\n"
-                        f"| **Primary Camera** | {int(p_a['primary_rear_camera'])} MP | {int(p_b['primary_rear_camera'])} MP |\n"
+                        f"| **Primary Camera** | {cam_a} | {cam_b} |\n"
                         f"| **5G Support** | {p_a['has_5g']} | {p_b['has_5g']} |\n"
                         f"| **Display** | {p_a['display_size']}\" {p_a['display_type'].title()} ({int(p_a['refresh_rate'])}Hz) | {p_b['display_size']}\" {p_b['display_type'].title()} ({int(p_b['refresh_rate'])}Hz) |\n"
                         f"| **Processor** | {p_a['processor_brand'].title()} | {p_b['processor_brand'].title()} |\n"
                     )
                 else:
+                    products = []
                     response_text = f"Could not find exact matches for both '{name_a}' and '{name_b}'. Please check model names."
             else:
                 response_text = "Please specify two phones to compare, e.g. *'Compare Vivo V50 and Realme P3 Pro'*."
 
         elif intent == "SPEC_INQUIRY":
-            res = self.search_engine.search(query=query, limit=1)
+            cleaned_target = re.sub(
+                r"\b(?:what\s+is\s+(?:the\s+)?|what\s+are\s+(?:the\s+)?|how\s+is\s+(?:the\s+)?|specs?\s+of|specifications?\s+of|details\s+of|features\s+of|tell\s+me\s+about|price\s+of|cost\s+of|battery\s+of|camera\s+of|ram\s+of|display\s+of|screen\s+of|processor\s+of)\b",
+                " ",
+                query,
+                flags=re.IGNORECASE,
+            )
+            cleaned_target = re.sub(
+                r"\b(?:phone|phones|mobile|mobiles|smartphone|smartphones)\b",
+                " ",
+                cleaned_target,
+                flags=re.IGNORECASE,
+            ).strip()
+            res = self.search_engine.search(query=cleaned_target or query, relax_query=False, limit=1)
             if res["products"]:
                 p = res["products"][0]
                 products = [p]
+                ram_str = f"{p['ram']}GB RAM" if p["ram"] < 1 else f"{int(p['ram'])}GB RAM"
+                cam_str = f"{p['primary_rear_camera']} MP Main" if p["primary_rear_camera"] < 1 else f"{int(p['primary_rear_camera'])} MP Main"
+                front_str = f"{p['primary_front_camera']} MP Front" if p["primary_front_camera"] < 1 else f"{int(p['primary_front_camera'])} MP Front"
                 response_text = (
                     f"📱 **{p['name'].title()} Specifications**:\n"
                     f"- **Price**: ₹{p['price']:,}\n"
-                    f"- **RAM & Storage**: {int(p['ram'])}GB RAM | {int(p['storage'])}GB Storage\n"
+                    f"- **RAM & Storage**: {ram_str} | {int(p['storage'])}GB Storage\n"
                     f"- **Battery**: {p['battery_cap']} mAh (Fast Charging: {p['has_fast_charging']})\n"
-                    f"- **Camera**: {int(p['primary_rear_camera'])} MP Main | {int(p['primary_front_camera'])} MP Front\n"
+                    f"- **Camera**: {cam_str} | {front_str}\n"
                     f"- **Display**: {p['display_size']}\" {p['display_type'].title()} @ {int(p['refresh_rate'])}Hz\n"
                     f"- **Processor**: {p['processor_brand'].title()} ({int(p['num_core'])}-core)\n"
                     f"- **5G Ready**: {p['has_5g']}"
                 )
             else:
-                response_text = "No matching smartphone found for spec inquiry."
+                products = []
+                response_text = f"Could not find specifications for '{cleaned_target or query}'. Please check the model name."
 
         else:  # PRODUCT_SEARCH
             slots, residual_tokens = self.search_engine.parse_query_slots(query)
@@ -396,16 +529,52 @@ class TypicalChatbot:
             )
             products = search_res["products"]
             if products:
-                title_emoji = "📸" if sort_by == "camera_desc" else "🔍"
-                category_desc = "camera " if sort_by == "camera_desc" else ""
-                lines = [
-                    f"{title_emoji} Found **{search_res['total_matches']}** matching {category_desc}smartphones. Here are top recommendations:\n"
-                ]
+                category_emoji_map = {
+                    "camera_desc": ("📸", "top camera"),
+                    "camera_asc": ("📸", "entry camera"),
+                    "battery_desc": ("🔋", "long battery life"),
+                    "battery_asc": ("🔋", "lowest battery capacity"),
+                    "ram_desc": ("⚡", "high performance RAM"),
+                    "ram_asc": ("⚡", "lowest RAM"),
+                    "storage_desc": ("💾", "highest storage"),
+                    "storage_asc": ("💾", "lowest storage"),
+                    "price_asc": ("🏷️", "most affordable"),
+                    "price_desc": ("👑", "premium flagship"),
+                }
+                top_p = products[0]
+                brand_str = f" {slots['brand'].title()}" if slots.get("brand") else ""
+                if sort_by == "battery_asc":
+                    summary = f"🔋 The{brand_str} smartphone with the lowest battery capacity is the **{top_p['name'].title()}** ({top_p['battery_cap']} mAh, ₹{top_p['price']:,}). Here are top lowest battery picks:\n"
+                elif sort_by == "battery_desc":
+                    summary = f"🔋 The{brand_str} smartphone with the highest battery capacity is the **{top_p['name'].title()}** ({top_p['battery_cap']} mAh, ₹{top_p['price']:,}). Here are top battery picks:\n"
+                elif sort_by == "camera_asc":
+                    cam_fmt = f"{top_p['primary_rear_camera']}MP" if top_p['primary_rear_camera'] < 1 else f"{int(top_p['primary_rear_camera'])}MP"
+                    summary = f"📸 The{brand_str} smartphone with the lowest camera resolution is the **{top_p['name'].title()}** ({cam_fmt}, ₹{top_p['price']:,}). Here are entry camera picks:\n"
+                elif sort_by == "camera_desc":
+                    cam_fmt = f"{top_p['primary_rear_camera']}MP" if top_p['primary_rear_camera'] < 1 else f"{int(top_p['primary_rear_camera'])}MP"
+                    summary = f"📸 Top camera recommendations (led by **{top_p['name'].title()}** with {cam_fmt} rear camera):\n"
+                elif sort_by == "ram_asc":
+                    ram_fmt = f"{top_p['ram']}GB" if top_p['ram'] < 1 else f"{int(top_p['ram'])}GB"
+                    summary = f"⚡ The{brand_str} smartphone with the lowest RAM is the **{top_p['name'].title()}** ({ram_fmt} RAM, ₹{top_p['price']:,}). Here are top entry-level picks:\n"
+                elif sort_by == "ram_desc":
+                    ram_fmt = f"{top_p['ram']}GB" if top_p['ram'] < 1 else f"{int(top_p['ram'])}GB"
+                    summary = f"⚡ The{brand_str} smartphone with the highest RAM is the **{top_p['name'].title()}** ({ram_fmt} RAM, ₹{top_p['price']:,}). Here are top high performance picks:\n"
+                elif sort_by == "price_asc":
+                    summary = f"🏷️ The most affordable{brand_str} smartphone is the **{top_p['name'].title()}** at **₹{top_p['price']:,}**. Here are top budget picks:\n"
+                elif sort_by == "price_desc":
+                    summary = f"👑 The premium flagship{brand_str} smartphone is the **{top_p['name'].title()}** at **₹{top_p['price']:,}**. Here are top flagship picks:\n"
+                else:
+                    title_emoji, category_desc = category_emoji_map.get(sort_by, ("🔍", ""))
+                    desc_part = f" {category_desc}" if category_desc else ""
+                    summary = f"{title_emoji} Found **{search_res['total_matches']}** matching{desc_part} smartphones. Here are top recommendations:\n"
+                lines = [summary]
                 for i, p in enumerate(products, 1):
+                    ram_str = f"{p['ram']}GB" if p["ram"] < 1 else f"{int(p['ram'])}GB"
+                    cam_str = f"{p['primary_rear_camera']}MP" if p["primary_rear_camera"] < 1 else f"{int(p['primary_rear_camera'])}MP"
                     lines.append(
                         f"**{i}. {p['name'].title()}** — **₹{p['price']:,}**\n"
-                        f"   - {int(p['ram'])}GB RAM / {int(p['storage'])}GB | {p['battery_cap']}mAh | "
-                        f"{int(p['primary_rear_camera'])}MP Camera | 5G: {p['has_5g']}"
+                        f"   - {ram_str} RAM / {int(p['storage'])}GB | {p['battery_cap']}mAh | "
+                        f"{cam_str} Camera | 5G: {p['has_5g']}"
                     )
                 response_text = "\n".join(lines)
             else:

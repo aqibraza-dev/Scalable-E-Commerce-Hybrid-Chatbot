@@ -158,6 +158,20 @@ CONVERSATIONAL_STOPWORDS = {
     "hazaar",
     "hazar",
     "thousand",
+    "benefit",
+    "benefits",
+    "advantage",
+    "advantages",
+    "pro",
+    "pros",
+    "con",
+    "cons",
+    "worth",
+    "review",
+    "why",
+    "explain",
+    "highlight",
+    "highlights",
     "rupee",
     "mein",
     "tak",
@@ -214,6 +228,47 @@ CONVERSATIONAL_STOPWORDS = {
     "prefer",
     "prefers",
     "searching",
+    "least",
+    "lowest",
+    "highest",
+    "hight",
+    "maximum",
+    "minimum",
+    "max",
+    "min",
+    "smallest",
+    "largest",
+    "biggest",
+    "most",
+    "cheaper",
+    "where",
+    "when",
+    "whose",
+    "whom",
+    "life",
+    "backup",
+    "capacity",
+    "level",
+    "levels",
+    "rating",
+    "rated",
+    "mega",
+    "megapixel",
+    "megapixels",
+    "mp",
+    "mah",
+    "gb",
+    "mb",
+    "tb",
+    "hz",
+    "memory",
+    "make",
+    "makes",
+    "company",
+    "companies",
+    "having",
+    "carrying",
+    "equipped",
 }
 
 
@@ -225,13 +280,41 @@ class SearchEngine:
             "samusng": "samsung",
             "samsng": "samsung",
             "smansung": "samsung",
+            "samsong": "samsung",
+            "sansung": "samsung",
+            "smasung": "samsung",
+            "samasung": "samsung",
             "ipone": "apple",
             "iphone": "apple",
+            "iphones": "apple",
+            "iphhone": "apple",
+            "iphne": "apple",
+            "ihpone": "apple",
             "redmi": "xiaomi",
             "readmi": "xiaomi",
             "one plus": "oneplus",
+            "onplus": "oneplus",
+            "one pluse": "oneplus",
             "motrola": "motorola",
+            "moto": "motorola",
+            "morotola": "motorola",
             "real me": "realme",
+            "relame": "realme",
+            "xioami": "xiaomi",
+            "xiomi": "xiaomi",
+            "noting": "nothing",
+            "hight": "highest",
+            "highet": "highest",
+            "heighest": "highest",
+            "maxmimum": "maximum",
+            "minimun": "minimum",
+            "priminum": "premium",
+            "primum": "premium",
+            "premiun": "premium",
+            "preimum": "premium",
+            "edgee": "edge",
+            "edg": "edge",
+            "memory": "ram",
         }
 
     def _normalize_query(self, query: str | None) -> str:
@@ -242,8 +325,7 @@ class SearchEngine:
         q = re.sub(r"₹|rs\.?|inr", " ", q)
         q = re.sub(r"(?<=\d),(?=\d)", "", q)
         for typo, fix in self.typo_corrections.items():
-            if typo in q:
-                q = q.replace(typo, fix)
+            q = re.sub(r"\b" + re.escape(typo) + r"\b", fix, q)
         return q
 
     def parse_query_slots(self, query: str) -> tuple[dict[str, Any], list[str]]:
@@ -354,8 +436,28 @@ class SearchEngine:
                 slots["min_price"] = 45000
                 q = re.sub(r"\b(flagship|premium|ultra|high\s*end|top\s*end|mahanga)\b", " ", q)
 
-        # Feature Preference & Smart Sorting Detection
-        if re.search(r"\b(camera|cameras|photo|photos|photography|selfie|megapixels?|mp|video|vlogging|night\s*mode|portrait)\b", q):
+        # Feature Preference & Smart Sorting Detection (Extremums & Attributes)
+        # 1. RAM extremums
+        if re.search(r"\b(?:least|lowest|min|minimum|smallest|kam|sabse\s+kam)\s+(?:ram|memory)(?:\s*(?:ram|memory|gb))?\b|\b(?:ram|memory)\s+(?:is\s+)?(?:least|lowest|min|minimum|smallest|kam)\b", q):
+            slots["sort_by"] = "ram_asc"
+            slots["min_ram"] = None
+            q = re.sub(r"\b(?:least|lowest|min|minimum|smallest|kam|sabse\s+kam)\s+(?:ram|memory)(?:\s*(?:ram|memory|gb))?\b|\b(?:ram|memory)\s+(?:is\s+)?(?:least|lowest|min|minimum|smallest|kam)\b", " ", q)
+        elif re.search(r"\b(?:highest|hight|high|max|maximum|most|top|best|sabse\s+jyada|sabse\s+zyada)\s+(?:ram|memory)(?:\s*(?:ram|memory|gb))?\b|\b(?:ram|memory)\s+(?:is\s+)?(?:highest|hight|high|max|maximum|most|top|best)\b", q):
+            slots["sort_by"] = "ram_desc"
+            q = re.sub(r"\b(?:highest|hight|high|max|maximum|most|top|best|sabse\s+jyada|sabse\s+zyada)\s+(?:ram|memory)(?:\s*(?:ram|memory|gb))?\b|\b(?:ram|memory)\s+(?:is\s+)?(?:highest|hight|high|max|maximum|most|top|best)\b", " ", q)
+        # 2. Battery extremums
+        elif re.search(r"\b(?:least|lowest|min|minimum|smallest|kam|sabse\s+kam)\s*(?:battery|backup|mah|power)(?:\s*(?:battery|backup|mah|power|life))?\b|\b(?:battery|backup|mah|power)\s+(?:is\s+)?(?:least|lowest|min|minimum|smallest|kam)\b", q):
+            slots["sort_by"] = "battery_asc"
+            q = re.sub(r"\b(?:least|lowest|min|minimum|smallest|kam|sabse\s+kam)\s*(?:battery|backup|mah|power)(?:\s*(?:battery|backup|mah|power|life))?\b|\b(?:battery|backup|mah|power)\s+(?:is\s+)?(?:least|lowest|min|minimum|smallest|kam)\b", " ", q)
+        elif re.search(r"\b(?:highest|max|maximum|most|best|top|longest|sabse\s+jyada|sabse\s+zyada)\s*(?:battery|backup|mah|power)(?:\s*(?:battery|backup|mah|power|life))?\b|\b(?:battery|backup|mah|power)\s+(?:is\s+)?(?:highest|max|maximum|most|best|top|longest)\b", q):
+            slots["sort_by"] = "battery_desc"
+            q = re.sub(r"\b(?:highest|max|maximum|most|best|top|longest|sabse\s+jyada|sabse\s+zyada)\s*(?:battery|backup|mah|power)(?:\s*(?:battery|backup|mah|power|life))?\b|\b(?:battery|backup|mah|power)\s+(?:is\s+)?(?:highest|max|maximum|most|best|top|longest)\b", " ", q)
+        # 3. Camera extremums
+        elif re.search(r"\b(?:least|lowest|min|minimum|smallest|kam|sabse\s+kam)\s*(?:mp\s+|mega\s*pixels?\s+|megapixels?\s+)?(?:camera|cameras|photo|photos|photography|selfie|megapixels?|mega\s*pixels?|mp)(?:\s*(?:camera|cameras|megapixels?|mega\s*pixels?|mp))?\b|\b(?:camera|cameras|megapixels?|mega\s*pixels?|mp)\s+(?:is\s+)?(?:least|lowest|min|minimum|smallest|kam)\b|\b(?:least|lowest|min|minimum|smallest|kam)\s+(?:mp|megapixels?|mega\s*pixels?)\b", q):
+            slots["sort_by"] = "camera_asc"
+            slots["min_camera"] = None
+            q = re.sub(r"\b(?:least|lowest|min|minimum|smallest|kam|sabse\s+kam)\s*(?:mp\s+|mega\s*pixels?\s+|megapixels?\s+)?(?:camera|cameras|photo|photos|photography|selfie|megapixels?|mega\s*pixels?|mp)(?:\s*(?:camera|cameras|megapixels?|mega\s*pixels?|mp))?\b|\b(?:camera|cameras|megapixels?|mega\s*pixels?|mp)\s+(?:is\s+)?(?:least|lowest|min|minimum|smallest|kam)\b|\b(?:least|lowest|min|minimum|smallest|kam)\s+(?:mp|megapixels?|mega\s*pixels?)\b", " ", q)
+        elif re.search(r"\b(?:highest|max|maximum|most|best|top)\s*(?:mp\s+|mega\s*pixels?\s+|megapixels?\s+)?(?:camera|cameras|photo|photos|photography|selfie|megapixels?|mega\s*pixels?|mp)(?:\s*(?:camera|cameras|megapixels?|mega\s*pixels?|mp))?\b|\b(?:camera|cameras|megapixels?|mega\s*pixels?|mp)\s+(?:is\s+)?(?:highest|max|maximum|most|best|top)\b|\b(?:highest|max|maximum|most|best|top)\s+(?:mp|megapixels?|mega\s*pixels?)\b", q):
             slots["sort_by"] = "camera_desc"
             if slots.get("min_camera") is None:
                 if slots["max_price"] is not None and slots["max_price"] <= 10000:
@@ -364,14 +466,35 @@ class SearchEngine:
                     slots["min_camera"] = 48.0
                 else:
                     slots["min_camera"] = 50.0
-        elif re.search(r"\b(battery|backup|mah|power|long\s*lasting|charge|charging)\b", q):
-            slots["sort_by"] = "battery_desc"
-        elif re.search(r"\b(gaming|game|gamer|games|processor|fastest|speed|performance|heavy\s*use)\b", q):
-            slots["sort_by"] = "ram_desc"
-        elif re.search(r"\b(cheapest|lowest\s+price|sasta|kam\s*daam|saste)\b", q):
+            q = re.sub(r"\b(?:highest|max|maximum|most|best|top)\s*(?:mp\s+|mega\s*pixels?\s+|megapixels?\s+)?(?:camera|cameras|photo|photos|photography|selfie|megapixels?|mega\s*pixels?|mp)(?:\s*(?:camera|cameras|megapixels?|mega\s*pixels?|mp))?\b|\b(?:camera|cameras|megapixels?|mega\s*pixels?|mp)\s+(?:is\s+)?(?:highest|max|maximum|most|best|top)\b|\b(?:highest|max|maximum|most|best|top)\s+(?:mp|megapixels?|mega\s*pixels?)\b", " ", q)
+        # 4. Storage extremums
+        elif re.search(r"\b(?:least|lowest|min|minimum|smallest|kam)\s+storage\b", q):
+            slots["sort_by"] = "storage_asc"
+            q = re.sub(r"\b(?:least|lowest|min|minimum|smallest|kam)\s+storage\b", " ", q)
+        elif re.search(r"\b(?:highest|max|maximum|most|top|best|sabse\s+jyada)\s+storage\b", q):
+            slots["sort_by"] = "storage_desc"
+            q = re.sub(r"\b(?:highest|max|maximum|most|top|best|sabse\s+jyada)\s+storage\b", " ", q)
+        # 5. Price extremums
+        elif re.search(r"\b(cheapest|cheepest|lowest\s+price|least\s+price|minimum\s+price|most\s+affordable|sasta|kam\s*daam|saste)\b", q):
             slots["sort_by"] = "price_asc"
-        elif re.search(r"\b(most\s+expensive|costliest|mahanga|expensive|premium|flagship)\b", q):
+        elif re.search(r"\b(most\s+expensive|costliest|highest\s+price|maximum\s+price|mahanga|expensive|premium|flagship|ultra\s+flagship)\b", q):
             slots["sort_by"] = "price_desc"
+        # 6. General Feature preferences (fallback to desc, unless asking about a specific model's spec)
+        is_spec_inquiry = bool(re.search(r"\b(?:what\s+is\s+(?:the\s+)?|what\s+are\s+(?:the\s+)?|how\s+is\s+(?:the\s+)?|details\s+of|specs?\s+of|specifications?\s+of|(?:battery|camera|ram|storage|price|cost|display|screen|processor)\s+of)\b", q))
+        if not is_spec_inquiry:
+            if re.search(r"\b(camera|cameras|photo|photos|photography|selfie|megapixels?|mp|video|vlogging|night\s*mode|portrait)\b", q):
+                slots["sort_by"] = "camera_desc"
+                if slots.get("min_camera") is None:
+                    if slots["max_price"] is not None and slots["max_price"] <= 10000:
+                        slots["min_camera"] = 13.0
+                    elif slots["max_price"] is not None and slots["max_price"] <= 25000:
+                        slots["min_camera"] = 48.0
+                    else:
+                        slots["min_camera"] = 50.0
+            elif re.search(r"\b(battery|backup|mah|power|long\s*lasting|charge|charging)\b", q):
+                slots["sort_by"] = "battery_desc"
+            elif re.search(r"\b(gaming|game|gamer|games|processor|fastest|speed|performance|heavy\s*use)\b", q):
+                slots["sort_by"] = "ram_desc"
 
         # 3. Brand extraction
         for b in KNOWN_BRANDS:
@@ -416,7 +539,7 @@ class SearchEngine:
         # 8. Residual keywords
         words = re.findall(r"\b[a-zA-Z0-9]+\b", q)
         residual_keywords = [
-            w for w in words if w not in CONVERSATIONAL_STOPWORDS and len(w) > 1
+            w for w in words if w not in CONVERSATIONAL_STOPWORDS and (len(w) > 1 or w.isdigit())
         ]
 
         return slots, residual_keywords
@@ -438,6 +561,7 @@ class SearchEngine:
         sort_by: str = "relevance",
         limit: int = 10,
         offset: int = 0,
+        relax_query: bool = True,
     ) -> dict[str, Any]:
         """
         Executes an optimized product search with B-Tree indexes, FTS5 BM25 ranking,
@@ -501,7 +625,7 @@ class SearchEngine:
             cached_result["from_cache"] = True
             return cached_result
 
-        conn = get_db_connection(self.db_path)
+        conn = get_db_connection(self.db_path, read_only=True)
         cursor = conn.cursor()
 
         # Build dynamic SQL query
@@ -560,6 +684,16 @@ class SearchEngine:
             where_clauses.append("s.processor_brand LIKE ?")
             params.append(f"%{processor_brand.strip().lower()}%")
 
+        # Exclude zero or corrupt metrics for ascending metric sorts
+        if sort_by == "battery_asc":
+            where_clauses.append("s.battery_cap > 0")
+        elif sort_by == "ram_asc":
+            where_clauses.append("s.ram > 0")
+        elif sort_by == "camera_asc":
+            where_clauses.append("s.primary_rear_camera > 0")
+        elif sort_by == "storage_asc":
+            where_clauses.append("s.storage > 0")
+
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
         # Total matching count
@@ -567,8 +701,20 @@ class SearchEngine:
         cursor.execute(count_sql, params)
         total_count = cursor.fetchone()[0]
 
-        # Query Relaxation: if FTS residual keywords returned 0 results, but structured filters were present
-        if total_count == 0 and residual_tokens and len(where_clauses) > 1:
+        # Query Relaxation: if FTS residual keywords returned 0 results, but concrete structured filters were present
+        has_concrete_filter = any([
+            min_price is not None,
+            max_price is not None,
+            min_ram is not None,
+            min_storage is not None,
+            min_battery is not None,
+            min_camera is not None,
+            has_5g is not None,
+            display_type is not None,
+            min_refresh_rate is not None,
+            processor_brand is not None,
+        ])
+        if total_count == 0 and residual_tokens and relax_query and has_concrete_filter:
             where_clauses_relaxed = [c for c in where_clauses if "smartphones_fts" not in c]
             params_relaxed = [p for p in params if p != fts_query]
             where_sql_relaxed = ("WHERE " + " AND ".join(where_clauses_relaxed)) if where_clauses_relaxed else ""
@@ -595,9 +741,14 @@ class SearchEngine:
         sort_sql_map = {
             "price_asc": "s.price ASC",
             "price_desc": "s.price DESC",
+            "battery_asc": "s.battery_cap ASC, s.price ASC",
             "battery_desc": "s.battery_cap DESC, s.price DESC",
+            "ram_asc": "s.ram ASC, s.price ASC",
             "ram_desc": "s.ram DESC, s.price DESC",
+            "camera_asc": "s.primary_rear_camera ASC, s.price ASC",
             "camera_desc": "s.primary_rear_camera DESC, s.price DESC",
+            "storage_asc": "s.storage ASC, s.price ASC",
+            "storage_desc": "s.storage DESC, s.price DESC",
             "relevance": (
                 "(s.ram >= 4) DESC, s.price DESC, s.primary_rear_camera DESC"
                 if max_price is not None
@@ -704,7 +855,7 @@ class SearchEngine:
         if cached:
             return cached
 
-        conn = get_db_connection(self.db_path)
+        conn = get_db_connection(self.db_path, read_only=True)
         cur = conn.cursor()
         cur.execute("SELECT * FROM smartphones WHERE id = ?", (product_id,))
         row = cur.fetchone()
@@ -735,7 +886,7 @@ class SearchEngine:
         Updates a smartphone's price in SQLite and evicts corresponding L1/L2 caches.
         Demonstrates cache invalidation upon inventory/price mutation.
         """
-        conn = get_db_connection(self.db_path)
+        conn = get_db_connection(self.db_path, read_only=False)
         cur = conn.cursor()
         cur.execute(
             "UPDATE smartphones SET price = ? WHERE id = ?",

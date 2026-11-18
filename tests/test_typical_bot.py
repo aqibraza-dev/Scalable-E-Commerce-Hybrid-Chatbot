@@ -97,13 +97,39 @@ def test_typical_bot_out_of_domain():
         assert res["tokens_used"] == 0
 
 
-def test_typical_bot_extremes_comparison():
+def test_typical_bot_concept_and_extremes_comparison():
     bot = TypicalChatbot()
-    res = bot.process("sabse sasta aur mahanga phone dikhao")
-    assert res["intent"] == "EXTREMES_COMPARISON"
+    # Query with typo "priminum"
+    res = bot.process("compare cheapest and priminum phones")
+    assert res["intent"] in ["EXTREMES_COMPARISON", "COMPARISON"]
     assert len(res["products"]) == 2
-    assert "Sabse Sasta" in res["response"]
-    assert "Sabse Mahanga" in res["response"]
+    assert "Comparison" in res["response"]
+    assert res["tokens_used"] == 0
+    # One budget, one flagship
+    prices = [p["price"] for p in res["products"]]
+    assert min(prices) < 5000
+    assert max(prices) > 50000
+
+
+def test_typical_bot_used_phone_return_policy():
+    bot = TypicalChatbot()
+    # Query with typo "weather" for "whether" and asking about returning after 7 days
+    res = bot.process("weather i can give back if is used the phone for more than 7 days")
+    assert res["intent"] == "POLICY_RETURN_DAYS"
+    assert "7-Day" in res["response"]
+    assert "1-Year" in res["response"]
+    assert "Manufacturer Warranty" in res["response"]
+    assert res["tokens_used"] == 0
+
+
+def test_typical_bot_benefits_inquiry():
+    bot = TypicalChatbot()
+    # Query with typo "moto edgee 50"
+    res = bot.process("benefits of moto edgee 50")
+    assert res["intent"] == "BENEFITS_INQUIRY"
+    assert len(res["products"]) == 1
+    assert "Motorola Edge 50" in res["response"]
+    assert "Key Benefits" in res["response"]
     assert res["tokens_used"] == 0
 
 
@@ -178,6 +204,114 @@ def test_typical_bot_subjective_advisory():
         assert bot.classify_intent(q) == "SUBJECTIVE_ADVISORY"
         res = bot.process(q)
         assert len(res["products"]) > 0
+
+
+def test_typical_bot_extremum_queries_and_concept_comparisons():
+    bot = TypicalChatbot()
+
+    # 1. Compare best samsung phone with best iphhone (typo + concept comparison)
+    res_comp = bot.process("compare best samsung phone with best iphhone")
+    assert res_comp["intent"] == "COMPARISON"
+    assert len(res_comp["products"]) == 2
+    names = [p["brand"] for p in res_comp["products"]]
+    assert "samsung" in names
+    assert "apple" in names
+
+    # 2. Which phone has least battery
+    res_bat = bot.process("which phone has least battery")
+    assert res_bat["intent"] == "PRODUCT_SEARCH"
+    assert len(res_bat["products"]) > 0
+    assert res_bat["products"][0]["battery_cap"] <= 1200
+
+    # 3. Which phone has least mp camera
+    res_cam = bot.process("which phone has least mp camera")
+    assert res_cam["intent"] == "PRODUCT_SEARCH"
+    assert len(res_cam["products"]) > 0
+    assert res_cam["products"][0]["primary_rear_camera"] <= 2.0
+
+    # 4. Lowest ram phone
+    res_ram_low = bot.process("lowest ram phone")
+    assert res_ram_low["intent"] == "PRODUCT_SEARCH"
+    assert len(res_ram_low["products"]) > 0
+    assert res_ram_low["products"][0]["ram"] <= 1.0
+
+    # 5. Hight ram phone (typo 'hight' for highest)
+    res_ram_high = bot.process("hight ram phone")
+    assert res_ram_high["intent"] == "PRODUCT_SEARCH"
+    assert len(res_ram_high["products"]) > 0
+    assert res_ram_high["products"][0]["ram"] >= 18.0
+
+    # 6. Least battery oneplus phone
+    res_oneplus = bot.process("least battery oneplus phone")
+    assert len(res_oneplus["products"]) > 0
+    assert res_oneplus["products"][0]["brand"] == "oneplus"
+    assert res_oneplus["products"][0]["battery_cap"] <= 3500
+
+
+def test_typical_bot_longest_battery_life_stopword():
+    bot = TypicalChatbot()
+    res = bot.process("longest battery life phone")
+    assert len(res["products"]) > 0
+    # Must return top battery phone (>= 20,000 mAh), NOT stk life plus s (2800 mAh)!
+    assert res["products"][0]["battery_cap"] >= 20000
+
+
+def test_typical_bot_memory_query():
+    bot = TypicalChatbot()
+    res = bot.process("lowest memory phone")
+    assert len(res["products"]) > 0
+    assert res["products"][0]["ram"] <= 1.0
+
+
+def test_typical_bot_nothing_phone_comparison():
+    bot = TypicalChatbot()
+    res = bot.process("compare Nothing Phone 2 with Google Pixel 8")
+    assert res["intent"] == "COMPARISON"
+    assert len(res["products"]) == 2
+    brands = [p["brand"] for p in res["products"]]
+    assert "nothing" in brands
+    assert "google" in brands
+
+
+def test_typical_bot_extremum_answer_clarity():
+    bot = TypicalChatbot()
+    res = bot.process("which phone has least battery")
+    assert "lowest battery capacity" in res["response"].lower()
+    assert "karbonn" in res["response"].lower()
+    assert "1100" in res["response"]
+
+
+def test_typical_bot_spec_inquiry_pixel_8():
+    bot = TypicalChatbot()
+    intent = bot.classify_intent("what is the price of pixel 8")
+    assert intent == "SPEC_INQUIRY"
+    res = bot.process("what is the price of pixel 8")
+    assert len(res["products"]) == 1
+    assert "pixel 8" in res["products"][0]["name"].lower()
+    assert "Specifications" in res["response"]
+
+
+def test_typical_bot_spec_inquiry_iphone_15_battery():
+    bot = TypicalChatbot()
+    intent = bot.classify_intent("battery of iphone 15")
+    assert intent == "SPEC_INQUIRY"
+    res = bot.process("battery of iphone 15")
+    assert len(res["products"]) == 1
+    assert res["products"][0]["name"].lower() == "apple iphone 15"
+    assert res["products"][0]["battery_cap"] == 3349
+
+
+def test_typical_bot_spec_inquiry_nonexistent_returns_empty_products():
+    bot = TypicalChatbot()
+    intent = bot.classify_intent("what is the battery of nokia 3310")
+    assert intent == "SPEC_INQUIRY"
+    res = bot.process("what is the battery of nokia 3310")
+    # Must report empty products so orchestrator falls back to LLM instead of returning wrong phone
+    assert len(res["products"]) == 0
+    assert "Could not find specifications" in res["response"]
+
+
+
 
 
 
